@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="bg">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Watermark Creation — Водни знакове на снимки</title>
+    <meta name="description" content="Добавяне на водни знакове с GPS, метео, QR код и стъпки на снимки" />
+    <meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Watermark" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <style>
+      /* Avoid white flash before styles load */
+      html { background: #0b1220; color: #e8ecf1; }
+      body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <!-- Loading placeholder -->
+    <div id="boot-root" class="boot" role="status" aria-live="polite">
+      <span class="boot__spinner" aria-hidden="true"></span>
+      <span class="boot__text">Зареждане…</span>
+    </div>
+
+    <!-- Main application -->
+    <div id="app-root" hidden>
+      <a class="skip-link" href="#main">Към съдържанието</a>
+
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand__dot" aria-hidden="true"></span>
+          <span class="brand__name">Watermark Creation</span>
+        </div>
+        <nav class="topbar__nav" role="navigation" aria-label="Основна навигация">
+          <button id="nav-main" class="nav-btn nav-btn--active" data-view="main">Начало</button>
+          <button id="nav-gallery" class="nav-btn" data-view="gallery">Галерия</button>
+          <button id="nav-categories" class="nav-btn" data-view="category">Категории</button>
+          <button id="nav-settings" class="nav-btn" data-view="settings">Настройки</button>
+          <button id="nav-help" class="nav-btn" data-view="help">Помощ</button>
+        </nav>
+      </header>
+
+      <main id="main">
+        <!-- Main View - Dashboard -->
+        <section id="main-view" class="view" aria-labelledby="main-title">
+          <header class="view__header">
+            <h1 id="main-title">Watermark Creation</h1>
+            <p class="view__lead">Добавете водни знакове на снимки с GPS, метео, QR код и стъпки</p>
+          </header>
+
+          <div class="dashboard">
+            <div class="dashboard__card">
+              <h2>Бързи действия</h2>
+              <div class="actions-grid">
+                <button id="btn-load-photos" class="action-btn action-btn--primary">
+                  <span class="action-btn__icon">📷</span>
+                  <span class="action-btn__text">Зареди снимки</span>
+                  <span class="action-btn__desc">Изберете множество снимки от устройството</span>
+                </button>
+                <button id="nav-gallery-quick" class="action-btn" data-view="gallery">
+                  <span class="action-btn__icon">🖼️</span>
+                  <span class="action-btn__text">Галерия</span>
+                  <span class="action-btn__desc">Преглед и управление на заредените снимки</span>
+                </button>
+                <button id="nav-categories-quick" class="action-btn" data-view="category">
+                  <span class="action-btn__icon">📁</span>
+                  <span class="action-btn__text">Категории</span>
+                  <span class="action-btn__desc">Създайте категории и стъпки за работа</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="dashboard__card">
+              <h2>Статистики</h2>
+              <div class="stats-grid">
+                <div class="stat">
+                  <span id="stat-photos" class="stat__value">0</span>
+                  <span class="stat__label">Снимки</span>
+                </div>
+                <div class="stat">
+                  <span id="stat-categories" class="stat__value">0</span>
+                  <span class="stat__label">Категории</span>
+                </div>
+                <div class="stat">
+                  <span id="stat-steps" class="stat__value">0</span>
+                  <span class="stat__label">Стъпки</span>
+                </div>
+                <div class="stat">
+                  <span id="stat-assigned" class="stat__value">0</span>
+                  <span class="stat__label">Присвоени</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Gallery View -->
+        <section id="gallery-view" class="view" hidden aria-labelledby="gallery-title">
+          <header class="view__header">
+            <h1 id="gallery-title">Галерия <span id="gallery-count" class="badge">0</span></h1>
+            <div class="view__actions">
+              <button id="btn-load-photos-gallery" class="btn btn--primary">Зареди снимки</button>
+              <button id="btn-select-all" class="btn btn--secondary" title="Маркирай всички снимки">
+                <span class="btn__icon">☑</span> Всички
+              </button>
+              <button id="btn-deselect-all" class="btn btn--secondary" title="Демаркирай всички снимки">
+                <span class="btn__icon">☐</span> Нито една
+              </button>
+              <button id="btn-delete-all-photos" class="btn btn--danger" title="Изтрий всички снимки">
+                <span class="btn__icon">🗑</span> Изтрии всички
+              </button>
+              <button id="btn-process-selected" class="btn btn--success" disabled>
+                Обработи избраните
+              </button>
+            </div>
+          </header>
+
+          <p id="gallery-empty" class="hint" hidden>
+            Още няма заредени снимки. Натиснете „Зареди снимки“ за да започнете.
+          </p>
+
+          <ul id="gallery-grid" class="gallery-grid" role="list" aria-label="Снимки в галерията"></ul>
+        </section>
+
+        <!-- Category View -->
+        <section id="category-view" class="view" hidden aria-labelledby="category-title">
+          <header class="view__header">
+            <h1 id="category-title">Категории</h1>
+            <div class="header-actions">
+              <button id="btn-export-categories" class="btn btn--secondary" title="Експорт на категории в JSON файл">
+                <span class="btn__icon">📤</span> Експорт
+              </button>
+              <button id="btn-import-categories" class="btn btn--secondary" title="Импорт на категории от JSON файл">
+                <span class="btn__icon">📥</span> Импорт
+              </button>
+              <button id="btn-add-category" class="btn btn--primary">Добави категория</button>
+              <button id="btn-process-category" class="btn btn--success" title="Обработи цялата категория с воден знак">
+                <span class="btn__icon">⚙</span> Обработи категория
+              </button>
+            </div>
+          </header>
+
+          <!-- Watermark Mode Selector -->
+          <div id="watermark-mode-selector" class="watermark-mode-selector" hidden>
+            <fieldset class="mode-fieldset">
+              <legend>Режим на воден знак</legend>
+              <div class="mode-options">
+                <label class="mode-option">
+                  <input type="radio" id="watermark-mode-full" name="watermark-mode" value="full" checked>
+                  <span class="mode-option__label">
+                    <span class="mode-option__icon">🔵</span>
+                    <span class="mode-option__text">Пълен воден знак</span>
+                    <span class="mode-option__desc">GPS, адрес, дата, QR, №, категория, стъпка, описание</span>
+                  </span>
+                </label>
+                <label class="mode-option">
+                  <input type="radio" id="watermark-mode-numberOnly" name="watermark-mode" value="numberOnly">
+                  <span class="mode-option__label">
+                    <span class="mode-option__icon">🟡</span>
+                    <span class="mode-option__text">Само номер</span>
+                    <span class="mode-option__desc">Само пореден номер върху съществуващ воден знак</span>
+                  </span>
+                </label>
+              </div>
+              <div id="number-position-options" class="number-position-options" hidden>
+                <fieldset class="position-fieldset">
+                  <legend>Позиция на номера</legend>
+                  <div class="position-options">
+                    <label class="position-option">
+                      <input type="radio" id="number-position-top-left" name="number-position" value="top-left" checked>
+                      <span class="position-option__label">
+                        <span class="position-option__icon">↖</span>
+                        <span>Горен ляв</span>
+                      </span>
+                    </label>
+                    <label class="position-option">
+                      <input type="radio" id="number-position-top-right" name="number-position" value="top-right">
+                      <span class="position-option__label">
+                        <span class="position-option__icon">↗</span>
+                        <span>Горен десен</span>
+                      </span>
+                    </label>
+                    <label class="position-option">
+                      <input type="radio" id="number-position-bottom-left" name="number-position" value="bottom-left">
+                      <span class="position-option__label">
+                        <span class="position-option__icon">↙</span>
+                        <span>Долен ляв</span>
+                      </span>
+                    </label>
+                    <label class="position-option">
+                      <input type="radio" id="number-position-bottom-right" name="number-position" value="bottom-right">
+                      <span class="position-option__label">
+                        <span class="position-option__icon">↘</span>
+                        <span>Долен десен</span>
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+              </div>
+            </fieldset>
+          </div>
+
+          <div id="category-list" class="item-list" role="list" aria-label="Списък с категории"></div>
+        </section>
+
+        <!-- Step View -->
+        <section id="step-view" class="view" hidden aria-labelledby="step-title">
+          <header class="view__header">
+            <button id="btn-back-category" class="icon-btn" aria-label="Назад към категории">←</button>
+            <h1 id="step-title">Стъпки: <span id="step-category-name"></span></h1>
+            <button id="btn-add-step" class="btn btn--primary">Добави стъпка</button>
+          </header>
+
+          <div id="step-list" class="item-list" role="list" aria-label="Списък с стъпки"></div>
+        </section>
+
+        <!-- Settings View -->
+        <section id="settings-view" class="view" hidden aria-labelledby="settings-title">
+          <header class="view__header">
+            <h1 id="settings-title">Настройки за воден знак</h1>
+          </header>
+
+          <form id="watermark-settings-form" class="settings-form">
+            <fieldset class="settings-section">
+              <legend>Какво да се показва във водния знак</legend>
+
+              <label class="setting-row">
+                <input type="checkbox" name="showCoordinates" />
+                <span class="setting-label">Координати (DD и DMS)</span>
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" name="showAltitude" />
+                <span class="setting-label">Надморска височина</span>
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" name="showDateTime" />
+                <span class="setting-label">Дата и час</span>
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" name="showAddress" />
+                <span class="setting-label">Адрес (улица, град)</span>
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" name="showWeather" />
+                <span class="setting-label">Температура и влажност</span>
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" name="showQrCode" />
+                <span class="setting-label">QR код с цялата информация</span>
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" name="showPhotoNumber" />
+                <span class="setting-label">Номер на снимката (1, 2, 3...)</span>
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" name="showCategoryStep" />
+                <span class="setting-label">Категория и стъпка</span>
+              </label>
+
+              <label class="setting-row">
+                <input type="checkbox" name="showDescription" />
+                <span class="setting-label">Описание на снимката</span>
+              </label>
+            </fieldset>
+
+            <fieldset class="settings-section">
+              <legend>Качество и размер</legend>
+
+              <label class="setting-row">
+                <span class="setting-label">Максимален размер (px)</span>
+                <input type="number" name="maxEdge" min="1024" max="8192" step="256" />
+              </label>
+
+              <label class="setting-row">
+                <span class="setting-label">JPEG качество (0.1 - 1.0)</span>
+                <input type="number" name="quality" min="0.1" max="1.0" step="0.05" />
+              </label>
+            </fieldset>
+
+            <div class="form-actions">
+              <button type="button" id="btn-save-watermark-settings" class="btn btn--primary">Запази настройки</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Help View -->
+        <section id="help-view" class="view" hidden aria-labelledby="help-title">
+          <header class="view__header">
+            <h1 id="help-title">Помощ и ръководство</h1>
+          </header>
+
+          <div class="help-content">
+            <section class="help-section">
+              <h2>🎯 Какво прави това приложение?</h2>
+              <p><strong>Watermark Creation</strong> ви помага да добавяте автоматични водни знаци (отбелязвания) върху вашите снимки — например номера на снимката, дата, място, категория на работа и др. Всичко става в телефона/компютъра ви, без да излизат снимките навън.</p>
+            </section>
+
+            <section class="help-section">
+              <h2>✅ Какво работи веднага</h2>
+              <ul>
+                <li><strong>Бърза маркировка с номер</strong> — изберете снимки, натиснете „Обработи избраните“, изберете позиция на номера (↖ ↗ ↙ ↘) → файлът получава голяма бяла цифра в избрания ъгъл.</li>
+                <li><strong>Създаване на категории и стъпки</strong> — организирайте работата си: напр. категория „Монтаж“, стъпки „Начало“, „Процес“, „Край“.</li>
+                <li><strong>Присвояване на снимки към стъпки</strong> — преместете снимки в дадена стъпка, те получават последователен номер (1, 2, 3…).</li>
+                <li><strong>Запаметяване на всичко</strong> — категориите, стъпките, присвоените снимки и техните номера се пазят локално в браузъра ви. При затваряне на прозореца не се губят.</li>
+              </ul>
+            </section>
+
+            <section class="help-section">
+              <h2>🚧 Какво ОЩЕ НЕ е готово (в разработка)</h2>
+              <p><strong>Пълен воден знак</strong> — скоро ще можете да добавите на снимката:</p>
+              <ul>
+                <li>GPS координати и височина</li>
+                <li>Адрес (от координатите)</li>
+                <li>Време и дата на заснемане</li>
+                <li>Времеви условия (температура, влажност)</li>
+                <li>QR код с пълна информация</li>
+                <li>Текстово описание на стъпката</li>
+                <li><strong>AI обработка на снимки</strong> — изкуствен интелект ще анализира съдържанието на снимките за да помогне с автоматичното разпределение: кое къде patří, разпознаване на обекти/ситуации, четене на съществуващи водни знаци и извличане на мета-информация (EXIF, GPS, дата/час), както и помощ за хронологично подреждане на снимките.</li>
+              </ul>
+              <p>Засега работи само <strong>номера в ъгъл</strong>.</p>
+            </section>
+
+            <section class="help-section">
+              <h2>🧭 Как да работите с приложението — стъпка по стъпка</h2>
+
+              <h3>1. Заредете снимки</h3>
+              <p>Натиснете <strong>„Зареди снимки“</strong> (голяма фотоапаратура на началния екран или бутон в галерията). Изберете една или повече снимки. Те ще се покажат в <strong>Галерията</strong>.</p>
+
+              <h3>2. Създайте категория</h3>
+              <p>Отидете в раздел <strong>„Категории“</strong> (таб горе в дясно или голям бутон на началния екран). Натиснете <strong>„Добави категория“</strong>, въведете име (напр. „Ремонт на къща“), описание (по избор) и ред. Натиснете <strong>„Запази“</strong>.</p>
+
+              <h3>3. Добавете стъпки в категорията</h3>
+              <p>Кликнете върху категорията → <strong>„Добави стъпка“</strong> → въведете име (напр. „Демонтаж“), описание, колко снимки са необходими, ред. Натиснете <strong>„Запази“</strong>. Повторете за всяка стъпка.</p>
+
+              <h3>4. Присвоете снимки към стъпка</h3>
+              <p>Във визуализацията на категорията натиснете <strong>„Присвои снимки“</strong> до стъпката. Отметнете снимките за тази стъпка → те отиват в дясната колона с номера им. Променете реда с <strong>дъргане и пускане</strong> (drag & drop). Натиснете <strong>„Потвърди избор“</strong>.</p>
+
+              <h3>5. Бърза маркировка с номер</h3>
+              <p>В <strong>Галерията</strong> отметнете снимките (чекбокс горе-ляво). Натиснете <strong>„Обработи избраните“</strong>. Изберете позиция: <strong>↖ Горе-ляво</strong>, <strong>↗ Горе-дясно</strong>, <strong>↙ Долу-ляво</strong>, <strong>↘ Долу-дясно</strong>. Натиснете <strong>„Приложи“</strong>. Снимките се обработват и отиват в паметта за изтегляне.</p>
+
+              <h3>6. Изтеглете резултатите</h3>
+              <p>След обработка натиснете <strong>„Изтегли всички“</strong>. Файловете се изтеглят с име като <code>IMG_20241116_143022_#1.jpg</code> (номера в края показва поредния номер).</p>
+            </section>
+
+            <section class="help-section">
+              <h2>🗂️ Какво се запазва и къде</h2>
+              <table class="help-table">
+                <thead>
+                  <tr><th>Какво</th><th>Къде се пази</th><th>Изчезва ли при затваряне?</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Категории и стъпки</td><td>IndexedDB (в браузъра)</td><td><strong>Не</strong></td></tr>
+                  <tr><td>Присвоени снимки и техните номера</td><td>IndexedDB</td><td><strong>Не</strong></td></tr>
+                  <tr><td>Настройки на воден знак</td><td>IndexedDB</td><td><strong>Не</strong></td></tr>
+                  <tr><td>Обработени снимки (готови за изтегляне)</td><td>Памет на браузъра</td><td><strong>Да</strong>, при затваряне на браузъра</td></tr>
+                </tbody>
+              </table>
+              <p class="help-tip">💡 <strong>Съвет:</strong> Изтеглете обработените снимки веднага след обработка, за да сте сигурни, че ги имате записани.</p>
+            </section>
+
+            <section class="help-section">
+              <h2>🎛️ Какво правят бутоните</h2>
+              <table class="help-table">
+                <thead>
+                  <tr><th>Бутон</th><th>Какво прави</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Зареди снимки</td><td>Отваря избор на файлове за качване в галерията</td></tr>
+                  <tr><td>Галерия / 🖼️</td><td>Показва всички заредени снимки с превюта</td></tr>
+                  <tr><td>Категории / 📁</td><td>Управление на категории и стъпки</td></tr>
+                  <tr><td>Настройки / ⚙️</td><td>Включване/изключване на елементи от пълния воден знак, позиция на номер</td></tr>
+                  <tr><td>Помощ / ❓</td><td>Показва това ръководство</td></tr>
+                  <tr><td>Маркирай всички / ☑</td><td>Отметва всички снимки в галерията</td></tr>
+                  <tr><td>Демаркирай всички / ☐</td><td>Премахва отметките от всички снимки</td></tr>
+                  <tr><td>Изтрий всички снимки / 🗑</td><td>Изтрива ВСИЧКИ заредени снимки (необратимо!)</td></tr>
+                  <tr><td>Обработи избраните</td><td>Стартира бързата маркировка с номер на отметнатите снимки</td></tr>
+                  <tr><td>Добави категория</td><td>Създава нова категория</td></tr>
+                  <tr><td>Присвои снимки</td><td>Отваря прозорец за избор на снимки за конкретна стъпка</td></tr>
+                  <tr><td>Промени снимки</td><td>Същото като „Присвои снимки“, но за стъпка, която вече има снимки</td></tr>
+                  <tr><td>✎ Редактирай</td><td>Промяна на име/описание/ред на категория или стъпка</td></tr>
+                  <tr><td>🗑 Изтрий</td><td>Изтрива категория/стъпка (премахва и присвоените снимки!)</td></tr>
+                  <tr><td>⋮⋮ Дъргане</td><td>Промяна на реда на категории/стъпки/снимки чрез дъргане</td></tr>
+                  <tr><td>Отказ</td><td>Затваря прозорец без запазване</td></tr>
+                  <tr><td>Запази / Потвърди / Приложи</td><td>Запазва промените или стартира обработката</td></tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section class="help-section">
+              <h2>❓ Често задавани въпроси</h2>
+              <dl class="help-faq">
+                <dt><strong>В: Загуби ли снимките ми, ако затваря браузъра?</strong></dt>
+                <dd><strong>Н:</strong> Не, оригиналните снимки и настройките ви са запазени в браузъра. Само <em>обработените</em> копия (готови за изтегляне) се губят при затваряне.</dd>
+
+                <dt><strong>В: Мога ли да променя реда на снимките в стъпка?</strong></dt>
+                <dd><strong>Д:</strong> Да — в прегледа на стъпката дърпнете с мишката иконата <code>⋮⋮</code> до снимката и я пуснете на ново място. Номерата се пресмятат автоматично.</dd>
+
+                <dt><strong>В: Какво става ако изтрия стъпка/категория?</strong></dt>
+                <dd><strong>Н:</strong> Снимките, присвоени към нея, се връщат в състояние „незаписани“ (останут в галерията, но вече нямат категория/стъпка/номер).</dd>
+
+                <dt><strong>В: Работи ли на телефон?</strong></dt>
+                <dd><strong>Д:</strong> Да, приложението е адаптивно и работи в мобилния браузър.</dd>
+
+                <dt><strong>В: Има ли облак/сървър?</strong></dt>
+                <dd><strong>Н:</strong> Не, всичко работи локално в браузъра ви. Никакви данни не излизат навън.</dd>
+              </dl>
+            </section>
+
+            <section class="help-section">
+              <h2>📞 Поддръжка и обратна връзка</h2>
+              <p>Ако срещнете проблем или имате предложение за подобрение, моля напишете ни на:</p>
+              <p><strong>📧 deyan.shahov@infralink-de.com</strong></p>
+              <p>или използвайте бутон <strong>„Обратна връзка“</strong> в настройките (ако е наличен).</p>
+            </section>
+
+            <footer class="help-footer">
+              <p><strong>Версия:</strong> 1.0.0 &nbsp;|&nbsp; <strong>Разработчик:</strong> RedFox</p>
+            </footer>
+          </div>
+        </section>
+
+      </main>
+
+      <!-- Category Modal -->
+      <div id="category-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="category-modal-title">
+        <div class="modal__backdrop" tabindex="-1"></div>
+        <div class="modal__content">
+          <header class="modal__header">
+            <h2 id="category-modal-title">Нова категория</h2>
+            <button class="modal__close" aria-label="Затвори">✕</button>
+          </header>
+          <form id="category-form" class="modal__form">
+            <div class="form-field">
+              <label for="category-name">Име на категорията *</label>
+              <input type="text" id="category-name" name="name" required maxlength="100" placeholder="Напр. Монтаж кабел" />
+            </div>
+            <div class="form-field">
+              <label for="category-description">Описание</label>
+              <textarea id="category-description" name="description" rows="3" maxlength="500" placeholder="Описание на вида работа..."></textarea>
+            </div>
+            <div class="form-field">
+              <label for="category-order">Ред на показване</label>
+              <input type="number" id="category-order" name="order" min="0" value="0" />
+            </div>
+            <div class="form-actions">
+              <button type="button" id="btn-cancel-category" class="btn btn--ghost">Отказ</button>
+              <button type="button" id="btn-delete-category" class="btn btn--danger" hidden>Изтрий</button>
+              <button type="button" id="btn-save-category" class="btn btn--primary">Запази</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Step Modal -->
+      <div id="step-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="step-modal-title">
+        <div class="modal__backdrop" tabindex="-1"></div>
+        <div class="modal__content">
+          <header class="modal__header">
+            <h2 id="step-modal-title">Нова стъпка</h2>
+            <button class="modal__close" aria-label="Затвори">✕</button>
+          </header>
+          <form id="step-form" class="modal__form">
+            <div class="form-field">
+              <label for="step-name">Име на стъпката *</label>
+              <input type="text" id="step-name" name="name" required maxlength="100" placeholder="Напр. Начало на работа" />
+            </div>
+            <div class="form-field">
+              <label for="step-description">Описание</label>
+              <textarea id="step-description" name="description" rows="3" maxlength="500" placeholder="Какво се снимка на тази стъпка..."></textarea>
+            </div>
+            <div class="form-field">
+              <label for="step-photos-required">Необходим брой снимки *</label>
+              <input type="number" id="step-photos-required" name="photosRequired" min="1" max="99" value="1" />
+            </div>
+            <div class="form-field">
+              <label for="step-order">Ред на показване</label>
+              <input type="number" id="step-order" name="order" min="0" value="0" />
+            </div>
+            <div class="form-actions">
+              <button type="button" id="btn-cancel-step" class="btn btn--ghost">Отказ</button>
+              <button type="button" id="btn-delete-step" class="btn btn--danger" hidden>Изтрий</button>
+              <button type="button" id="btn-save-step" class="btn btn--primary">Запази</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Photo Selection Modal -->
+      <div id="photo-selection-modal" class="modal modal--large" hidden role="dialog" aria-modal="true" aria-labelledby="photo-selection-title">
+        <div class="modal__backdrop" tabindex="-1"></div>
+        <div class="modal__content">
+          <header class="modal__header">
+            <h2 id="photo-selection-title">Изберете снимки за стъпка</h2>
+            <button class="modal__close" aria-label="Затвори">✕</button>
+          </header>
+          <div class="modal__body">
+            <p class="selection-hint">Кликнете върху снимка за да я изберете/премахнете. Избрани: <span id="photo-selection-count">0</span></p>
+            <div id="photo-selection-grid" class="photo-selection-grid" role="list" aria-label="Снимки за избор"></div>
+          </div>
+          <div class="form-actions">
+            <button type="button" id="btn-cancel-selection" class="btn btn--ghost">Отказ</button>
+            <button type="button" id="btn-confirm-selection" class="btn btn--primary" disabled>Потвърди избор</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Processing Modal -->
+      <div id="process-modal" class="modal modal--large" hidden role="dialog" aria-modal="true" aria-labelledby="process-title">
+        <div class="modal__backdrop" tabindex="-1"></div>
+        <div class="modal__content">
+          <header class="modal__header">
+            <h2 id="process-title">Обработка на снимки</h2>
+          </header>
+          <div class="modal__body">
+            <div class="process-status">
+              <p id="process-status">Подготовка...</p>
+              <p id="process-current" class="process-current"></p>
+              <progress id="process-progress" class="progress-bar" value="0" max="100" aria-label="Прогрес на обработка"></progress>
+            </div>
+            <div id="process-results" class="process-results" aria-label="Резултати" aria-live="polite"></div>
+          </div>
+          <div class="form-actions">
+            <button type="button" id="btn-download-all" class="btn btn--success" hidden>Изтегли всички</button>
+            <button type="button" id="btn-close-process" class="btn btn--ghost">Затвори</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Watermark Modal -->
+      <div id="quick-watermark-modal" class="modal modal--large" hidden role="dialog" aria-modal="true" aria-labelledby="quick-watermark-title">
+        <div class="modal__backdrop" tabindex="-1"></div>
+        <div class="modal__content">
+          <header class="modal__header">
+            <h2 id="quick-watermark-title">Бърза маркировка с номер</h2>
+            <button class="modal__close" aria-label="Затвори">✕</button>
+          </header>
+          <div class="modal__body">
+            <fieldset class="quick-watermark-position-fieldset">
+              <legend>Позиция на номера</legend>
+              <div id="quick-watermark-position" class="quick-watermark-position-options" role="radiogroup" aria-label="Изберете позиция на номера">
+                <label class="position-option">
+                  <input type="radio" name="quick-watermark-position" value="top-left" />
+                  <span class="position-option__icon">↖</span>
+                  <span class="position-option__label">Горе-ляво</span>
+                </label>
+                <label class="position-option">
+                  <input type="radio" name="quick-watermark-position" value="top-right" />
+                  <span class="position-option__icon">↗</span>
+                  <span class="position-option__label">Горе-дясно</span>
+                </label>
+                <label class="position-option">
+                  <input type="radio" name="quick-watermark-position" value="bottom-left" />
+                  <span class="position-option__icon">↙</span>
+                  <span class="position-option__label">Долу-ляво</span>
+                </label>
+                <label class="position-option">
+                  <input type="radio" name="quick-watermark-position" value="bottom-right" checked />
+                  <span class="position-option__icon">↘</span>
+                  <span class="position-option__label">Долу-дясно</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <div class="quick-watermark-preview">
+              <p id="quick-watermark-count" class="quick-watermark-count">Избрани: 0 снимки</p>
+              <div id="quick-watermark-grid" class="quick-watermark-grid" role="list" aria-label="Снимки за бърза маркировка"></div>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" id="btn-cancel-quick-watermark" class="btn btn--ghost">Отказ</button>
+            <button type="button" id="btn-apply-quick-watermark" class="btn btn--primary" disabled>Приложи</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast container -->
+      <div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
+    </div>
+
+    <script type="module" src="/src/boot.js"></script>
+  </body>
+</html>
