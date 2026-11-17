@@ -128,10 +128,10 @@ export function qrPayloadFor(latitude, longitude) {
 
 /**
  * Extended payload for watermark with all photo information.
- * Includes: coordinates, altitude, date/time, address, temperature, humidity, photo number, description
+ * Includes: coordinates, altitude, date/time, address, temperature, humidity, photo number, description, message
  */
 export function qrPayloadForWatermark(data) {
-  const { latitude, longitude, altitude, capturedAt, address, temperature, humidity, photoNumber, description, category, step } = data;
+  const { latitude, longitude, altitude, capturedAt, address, temperature, humidity, photoNumber, description, category, step, message } = data;
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return '';
 
   const lines = [
@@ -168,6 +168,10 @@ export function qrPayloadForWatermark(data) {
 
   if (description) {
     lines.push(`Описание: ${description}`);
+  }
+
+  if (message) {
+    lines.push(`Съобщение: ${message}`);
   }
 
   // Add Google Maps link at the end

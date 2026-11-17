@@ -36,7 +36,7 @@ export function createRefs() {
     'btn-save-category', 'btn-cancel-category', 'btn-delete-category',
     // Step management
     'step-list', 'btn-add-step', 'btn-back-category', 'step-modal', 'step-form',
-    'step-name', 'step-description', 'step-photos-required', 'step-order',
+    'step-name', 'step-description', 'step-message', 'step-photos-required', 'step-order',
     'btn-save-step', 'btn-cancel-step', 'btn-delete-step',
     // Photo assignment
     'photo-selection-modal', 'photo-selection-grid', 'photo-selection-count',
@@ -734,6 +734,7 @@ export function showStepModal({ step = null, category = null, onSave, onCancel }
   const form = ref('step-form');
   const nameInput = ref('step-name');
   const descInput = ref('step-description');
+  const messageInput = ref('step-message');
   const requiredInput = ref('step-photos-required');
   const orderInput = ref('step-order');
   const saveBtn = ref('btn-save-step');
@@ -745,6 +746,7 @@ export function showStepModal({ step = null, category = null, onSave, onCancel }
   form.reset();
   nameInput.value = step?.name || '';
   descInput.value = step?.description || '';
+  messageInput.value = step?.message || '';
   requiredInput.value = step?.photosRequired || 1;
   orderInput.value = step?.order ?? '';
 
@@ -767,6 +769,7 @@ export function showStepModal({ step = null, category = null, onSave, onCancel }
       id: step?.id || generateId(),
       name,
       description: descInput.value.trim(),
+      message: messageInput.value.trim(),
       photosRequired: Number(requiredInput.value) || 1,
       order: Number(orderInput.value) || 0,
       photos: step?.photos || [],

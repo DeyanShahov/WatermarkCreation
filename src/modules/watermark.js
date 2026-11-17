@@ -74,6 +74,7 @@ function wrapText(context, text, maxWidth, maxLines = 3) {
  *   category?: string,
  *   step?: string,
  *   description?: string,
+ *   stepMessage?: string,
  *   showCoordinates?: boolean,
  *   showAltitude?: boolean,
  *   showDateTime?: boolean,
@@ -101,6 +102,7 @@ export async function withWatermark(blob, options = {}) {
     category = null,
     step = null,
     description = null,
+    stepMessage = null,
     showCoordinates = true,
     showAltitude = true,
     showDateTime = true,
@@ -194,6 +196,16 @@ export async function withWatermark(blob, options = {}) {
     const descLines = wrapText(context, description, maxTextWidth, 2);
     for (const line of descLines) {
       lines.push({ text: line, size: metaSize, weight: '400' });
+    }
+  }
+
+  // Step Message (custom message for watermark)
+  if (showDescription && stepMessage) {
+    context.font = `${metaSize}px system-ui, sans-serif`;
+    const maxTextWidth = width - padding * 2;
+    const msgLines = wrapText(context, stepMessage, maxTextWidth, 2);
+    for (const line of msgLines) {
+      lines.push({ text: `💬 ${line}`, size: metaSize, weight: '500' });
     }
   }
 

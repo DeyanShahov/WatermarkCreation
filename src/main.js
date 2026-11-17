@@ -429,6 +429,8 @@ async function processCategoryPhotos(currentCategory, allPhotos, watermarkSettin
       const step = steps.find(s => s.id === photo.stepId);
       const categoryName = currentCategory.name;
       const stepName = step?.name || '';
+      const stepMessage = step?.message || '';
+      const stepDescription = step?.description || '';
 
       const exifData = await exif.readExifData(photo.file);
       const gps = exifData?.gps ?? null;
@@ -458,7 +460,8 @@ async function processCategoryPhotos(currentCategory, allPhotos, watermarkSettin
           totalPhotos: categoryPhotos.length,
           category: currentCategory.name,
           step: stepName,
-          description: step?.description,
+          description: stepDescription,
+          message: stepMessage,
         });
         qrMatrix = await qr.createQrMatrix(qrPayload);
       }
@@ -493,6 +496,8 @@ async function processCategoryPhotos(currentCategory, allPhotos, watermarkSettin
           totalPhotos: categoryPhotos.length,
           category: currentCategory.name,
           step: stepName,
+          description: stepDescription,
+          stepMessage: stepMessage,
           numberPosition: watermarkSettings.numberPosition,
         });
       }
