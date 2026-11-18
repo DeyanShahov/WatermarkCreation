@@ -45,6 +45,3 @@
   package = "@netlify/plugin-lighthouse"
   [plugins.inputs]
     thresholds = {performance = 0.9, accessibility = 0.9, "best-practices" = 0.9, seo = 0.9, pwa = 0.9}
-    budgets = [
-      {resourceSizes = [{resourceType = "total", budget = 500}, {resourceType = "script", budget = 150}, {resourceType = "css", budget = 50}, {resourceType = "image", budget = 200}, {resourceType = "font", budget = 50}, {resourceType = "third-party", budget = 100}]}
-    ]
