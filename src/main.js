@@ -326,6 +326,10 @@ async function handleDeleteCategory() {
     });
   }
   
+  // Delete AI settings for this category
+  const { deleteAISettings } = await import('./core/ai.js');
+  await deleteAISettings(currentCategory.id);
+  
   await storage.deleteCategory(currentCategory.id);
   
   // Update local state - clear assignments for affected photos
@@ -340,7 +344,7 @@ async function handleDeleteCategory() {
     currentStep: null,
     photos: updatedPhotos
   });
-  ui.showToast('Категорията е изтрита', { type: 'success' });
+  ui.showToast('Категорията е изтрита (включително AI настройки)', { type: 'success' });
 }
 
 function handleReorderCategories(categoryIds) {
@@ -351,7 +355,10 @@ function handleReorderCategories(categoryIds) {
 
 /* ------------------------------------------------------------------ Category Processing */
 
-async function handleProcessCategory() {
+/**
+ * Handle process category from step view - shows enrichment modal first.
+ */
+async function handleProcessCategoryFromStep() {
   const { currentCategory, photos, watermarkSettings } = getState();
   if (!currentCategory) {
     ui.showToast('Моля, първо изберете категория', { type: 'warn' });
@@ -380,7 +387,50 @@ async function handleProcessCategory() {
     }
   }
 
-  await processCategoryPhotos(currentCategory, photos, watermarkSettings);
+  // Show enrichment modal
+  ui.showEnrichmentModal({
+    category: currentCategory,
+    step: currentCategory.steps?.[0] || null, // Pass first step for message info
+    onSave: async (config) => {
+      // Save enrichment config to category
+      await saveCategoryEnrichment(currentCategory.id, config);
+      ui.showToast('Конфигурацията е запазена', { type: 'success' });
+    },
+    onProcess: async (config) => {
+      // Save enrichment config to category
+      await saveCategoryEnrichment(currentCategory.id, config);
+      // Merge enrichment settings with watermark settings
+      const mergedSettings = { ...watermarkSettings, ...config };
+      await processCategoryPhotos(currentCategory, photos, mergedSettings);
+    },
+    onCancel: () => {
+      ui.showToast('Обработката е отменена', { type: 'info' });
+    }
+  });
+}
+
+/**
+ * Save enrichment configuration to category.
+ */
+async function saveCategoryEnrichment(categoryId, enrichment) {
+  const { categories } = getState();
+  const categoryIndex = categories.findIndex(c => c.id === categoryId);
+  if (categoryIndex === -1) return;
+
+  const updatedCategory = {
+    ...categories[categoryIndex],
+    enrichment: {
+      ...categories[categoryIndex]?.enrichment,
+      ...enrichment,
+      lastEnriched: new Date().toISOString()
+    }
+  };
+
+  const updatedCategories = [...categories];
+  updatedCategories[categoryIndex] = updatedCategory;
+  
+  await storage.saveCategory(updatedCategory);
+  setState({ categories: updatedCategories, currentCategory: updatedCategory });
 }
 
 /* ------------------------------------------------------------------ Category Processing Core */
@@ -432,18 +482,47 @@ async function processCategoryPhotos(currentCategory, allPhotos, watermarkSettin
       const stepMessage = step?.message || '';
       const stepDescription = step?.description || '';
 
-      const exifData = await exif.readExifData(photo.file);
-      const gps = exifData?.gps ?? null;
-      const dateTime = exifData?.dateTime ?? null;
+      // Use enrichment data from category if available, otherwise fall back to EXIF
+      const enrichment = currentCategory.enrichment || {};
+      const hasEnrichment = enrichment && enrichment.lat && enrichment.lon;
 
-      let weather = null;
-      if (gps && watermarkSettings.showWeather) {
-        weather = await fetchWeather(gps.latitude, gps.longitude).catch(() => null);
-      }
-
+      let gps = null;
+      let dateTime = null;
       let address = null;
-      if (gps && watermarkSettings.showAddress) {
-        address = await geocode.reverseGeocode(gps.latitude, gps.longitude).catch(() => null);
+      let weather = null;
+
+      if (hasEnrichment) {
+        // Use enrichment data (address, coordinates, date/time, weather)
+        gps = {
+          latitude: enrichment.lat,
+          longitude: enrichment.lon,
+          altitude: enrichment.altitude || null
+        };
+        // Parse date and time from enrichment
+        if (enrichment.date && enrichment.time) {
+          dateTime = new Date(`${enrichment.date}T${enrichment.time}`);
+        } else if (enrichment.date) {
+          dateTime = new Date(enrichment.date);
+        }
+        address = enrichment.address || enrichment.displayName || null;
+        if (enrichment.temperature !== undefined || enrichment.humidity !== undefined) {
+          weather = {
+            temperature: enrichment.temperature,
+            humidity: enrichment.humidity
+          };
+        }
+      } else {
+        // Fallback to EXIF data
+        const exifData = await exif.readExifData(photo.file);
+        gps = exifData?.gps ?? null;
+        dateTime = exifData?.dateTime ?? null;
+        
+        if (gps && watermarkSettings.showWeather) {
+          weather = await fetchWeather(gps.latitude, gps.longitude).catch(() => null);
+        }
+        if (gps && watermarkSettings.showAddress) {
+          address = await geocode.reverseGeocode(gps.latitude, gps.longitude).catch(() => null);
+        }
       }
 
       let qrMatrix = null;
@@ -1101,7 +1180,7 @@ function wireEvents() {
   refs['btn-add-category']?.addEventListener('click', () => { console.log('🟢 [btn] Add Category clicked'); handleAddCategory(); });
   refs['btn-export-categories']?.addEventListener('click', () => { console.log('🟢 [btn] Export Categories clicked'); handleExportCategories(); });
   refs['btn-import-categories']?.addEventListener('click', () => { console.log('🟢 [btn] Import Categories clicked'); handleImportCategories(); });
-  refs['btn-process-category']?.addEventListener('click', () => { console.log('🟢 [btn] Process Category clicked'); handleProcessCategory(); });
+  refs['btn-process-category-step']?.addEventListener('click', () => { console.log('🟢 [btn] Process Category from Step clicked'); handleProcessCategoryFromStep(); });
   refs['btn-add-step']?.addEventListener('click', () => { console.log('🟢 [btn] Add Step clicked'); handleAddStep(); });
   refs['btn-delete-step']?.addEventListener('click', () => { console.log('🟢 [btn] Delete Step clicked'); handleDeleteStep(); });
   refs['btn-back-category']?.addEventListener('click', () => { console.log('🟢 [btn] Back to Category clicked'); handleNavClick('category'); });

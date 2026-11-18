@@ -139,9 +139,6 @@
                 <span class="btn__icon">📥</span> Импорт
               </button>
               <button id="btn-add-category" class="btn btn--primary">Добави категория</button>
-              <button id="btn-process-category" class="btn btn--success" title="Обработи цялата категория с воден знак">
-                <span class="btn__icon">⚙</span> Обработи категория
-              </button>
             </div>
           </header>
 
@@ -214,6 +211,9 @@
             <button id="btn-back-category" class="icon-btn" aria-label="Назад към категории">←</button>
             <h1 id="step-title">Стъпки: <span id="step-category-name"></span></h1>
             <button id="btn-add-step" class="btn btn--primary">Добави стъпка</button>
+            <button id="btn-process-category-step" class="btn btn--success" title="Обработи категория с воден знак">
+              <span class="btn__icon">⚙</span> Обработи категория
+            </button>
           </header>
 
           <div id="step-list" class="item-list" role="list" aria-label="Списък с стъпки"></div>
@@ -585,6 +585,199 @@
           <div class="form-actions">
             <button type="button" id="btn-cancel-quick-watermark" class="btn btn--ghost">Отказ</button>
             <button type="button" id="btn-apply-quick-watermark" class="btn btn--primary" disabled>Приложи</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Enrichment & Watermark Config Modal -->
+      <div id="enrichment-modal" class="modal modal--large" hidden role="dialog" aria-modal="true" aria-labelledby="enrichment-title">
+        <div class="modal__backdrop" tabindex="-1"></div>
+        <div class="modal__content">
+          <header class="modal__header">
+            <h2 id="enrichment-title">⚙ Конфигурация на воден знак за категория</h2>
+            <button class="modal__close" aria-label="Затвори">✕</button>
+          </header>
+          <div class="modal__body">
+            <div id="enrichment-tabs" class="enrichment-tabs" role="tablist" aria-label="Табове за обогатяване">
+              <button role="tab" id="tab-address" class="enrichment-tab enrichment-tab--active" aria-selected="true" aria-controls="panel-address">📍 Адрес и място</button>
+              <button role="tab" id="tab-datetime" class="enrichment-tab" aria-selected="false" aria-controls="panel-datetime">📅 Дата и време</button>
+              <button role="tab" id="tab-weather" class="enrichment-tab" aria-selected="false" aria-controls="panel-weather">🌡️ Метео (авто)</button>
+              <button role="tab" id="tab-watermark" class="enrichment-tab" aria-selected="false" aria-controls="panel-watermark">🔢 Воден знак</button>
+              <button role="tab" id="tab-ai" class="enrichment-tab" aria-selected="false" aria-controls="panel-ai">🤖 AI Настройки</button>
+            </div>
+
+            <!-- Panel: Address -->
+            <div role="tabpanel" id="panel-address" class="enrichment-panel" aria-labelledby="tab-address" hidden>
+              <fieldset>
+                <legend>Адрес за геокодиране</legend>
+                <div class="form-field">
+                  <label for="enrichment-address">Адрес *</label>
+                  <textarea id="enrichment-address" name="address" rows="3" maxlength="500" placeholder="Напр. ул. Витоша 10, 1000 София&#10;или координати: 42.6977, 23.3219"></textarea>
+                </div>
+                <div class="form-field">
+                  <label for="enrichment-address-validated">Валидиран адрес (AI)</label>
+                  <input type="text" id="enrichment-address-validated" name="addressValidated" readonly placeholder="Ще се попълни след AI валидация" />
+                </div>
+                <div class="form-actions">
+                  <button type="button" id="btn-validate-address" class="btn btn--secondary">🤖 AI Валидация на адреса</button>
+                  <button type="button" id="btn-geocode-preview" class="btn btn--ghost">🔍 Преглед на координати</button>
+                </div>
+                <div id="enrichment-geocode-preview" class="enrichment-preview" hidden>
+                  <h4>Резултат от геокодирането:</h4>
+                  <dl class="preview-grid">
+                    <dt>Десетични координати:</dt>
+                    <dd id="preview-latlon-decimal">—</dd>
+                    <dt>DMS координати:</dt>
+                    <dd id="preview-latlon-dms">—</dd>
+                    <dt>Пълен адрес:</dt>
+                    <dd id="preview-address">—</dd>
+                    <dt>Име на мястото:</dt>
+                    <dd id="preview-displayname">—</dd>
+                    <dt>Увереност:</dt>
+                    <dd id="preview-confidence">—</dd>
+                  </dl>
+                </div>
+              </fieldset>
+            </div>
+
+            <!-- Panel: Date & Time -->
+            <div role="tabpanel" id="panel-datetime" class="enrichment-panel" aria-labelledby="tab-datetime" hidden>
+              <fieldset>
+                <legend>Дата и време за метео профил</legend>
+                <div class="form-row">
+                  <div class="form-field">
+                    <label for="enrichment-date">Дата *</label>
+                    <input type="date" id="enrichment-date" name="date" />
+                  </div>
+                  <div class="form-field">
+                    <label for="enrichment-time">Време</label>
+                    <input type="time" id="enrichment-time" name="time" value="12:00" />
+                  </div>
+                </div>
+                <p class="form-hint">Метео данните се извличат за конкретен час. По подразбиране: днес в 12:00.</p>
+              </fieldset>
+            </div>
+
+            <!-- Panel: Weather (auto, read-only preview) -->
+            <div role="tabpanel" id="panel-weather" class="enrichment-panel" aria-labelledby="tab-weather" hidden>
+              <fieldset>
+                <legend>Метео данни (автоматично извлечени)</legend>
+                <div class="weather-preview">
+                  <div class="weather-card">
+                    <span class="weather-icon">🌡️</span>
+                    <div>
+                      <span class="weather-label">Температура</span>
+                      <span id="preview-temperature" class="weather-value">— °C</span>
+                    </div>
+                  </div>
+                  <div class="weather-card">
+                    <span class="weather-icon">💧</span>
+                    <div>
+                      <span class="weather-label">Влажност</span>
+                      <span id="preview-humidity" class="weather-value">— %</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button type="button" id="btn-refresh-weather" class="btn btn--secondary" disabled>🔄 Пресметни отново</button>
+                </div>
+                <p class="form-hint" id="weather-status">Въведете адрес и дата, след което натиснете „🔍 Преглед на координати“ за да се извлечат метео данните.</p>
+              </fieldset>
+            </div>
+
+            <!-- Panel: Watermark Settings -->
+            <div role="tabpanel" id="panel-watermark" class="enrichment-panel" aria-labelledby="tab-watermark" hidden>
+              <fieldset>
+                <legend>Настройки за воден знак</legend>
+                <div class="form-field">
+                  <label for="enrichment-watermark-mode">Режим на воден знак</label>
+                  <select id="enrichment-watermark-mode" name="watermarkMode">
+                    <option value="full">Пълен — GPS, адрес, дата, QR, №, категория, стъпка, описание, съобщение</option>
+                    <option value="numberOnly">Само номер — пореден номер върху съществуващ воден знак</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>Позиция на номера</label>
+                  <div id="enrichment-number-position" class="number-position-options" role="radiogroup" aria-label="Изберете позиция на номера">
+                    <label class="position-option">
+                      <input type="radio" name="enrichment-number-position" value="top-left" />
+                      <span class="position-option__icon">↖</span>
+                      <span class="position-option__label">Горе-ляво</span>
+                    </label>
+                    <label class="position-option">
+                      <input type="radio" name="enrichment-number-position" value="top-right" />
+                      <span class="position-option__icon">↗</span>
+                      <span class="position-option__label">Горе-дясно</span>
+                    </label>
+                    <label class="position-option">
+                      <input type="radio" name="enrichment-number-position" value="bottom-left" />
+                      <span class="position-option__icon">↙</span>
+                      <span class="position-option__label">Долу-ляво</span>
+                    </label>
+                    <label class="position-option">
+                      <input type="radio" name="enrichment-number-position" value="bottom-right" checked />
+                      <span class="position-option__icon">↘</span>
+                      <span class="position-option__label">Долу-дясно</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="form-field">
+                  <label>Съобщение от стъпката (въвежда се при стъпката)</label>
+                  <input type="text" id="enrichment-step-message" name="stepMessage" readonly placeholder="Се попълва автоматично от стъпката" />
+                </div>
+                <div class="form-field">
+                  <label>Категория</label>
+                  <input type="text" id="enrichment-category-name" name="categoryName" readonly />
+                </div>
+                <div class="form-field">
+                  <label>Стъпка</label>
+                  <input type="text" id="enrichment-step-name" name="stepName" readonly />
+                </div>
+              </fieldset>
+            </div>
+
+            <!-- Panel: AI Settings -->
+            <div role="tabpanel" id="panel-ai" class="enrichment-panel" aria-labelledby="tab-ai" hidden>
+              <fieldset>
+                <legend>AI Настройки за валидация на адреси</legend>
+                <p class="form-hint">Конфигурирайте AI модел за автоматична корекция и валидация на български адреси. Настройките се запазват локално в браузъра.</p>
+                
+                <div class="form-field">
+                  <label for="ai-endpoint">API Endpoint</label>
+                  <input type="url" id="ai-endpoint" name="aiEndpoint" placeholder="https://api.groq.com/openai/v1/chat/completions" />
+                </div>
+                
+                <div class="form-field">
+                  <label for="ai-api-key">API Key</label>
+                  <input type="password" id="ai-api-key" name="aiApiKey" placeholder="Вашият API ключ (например gsk_...)" autocomplete="new-password" />
+                </div>
+                
+                <div class="form-field">
+                  <label for="ai-model">Модел</label>
+                  <input type="text" id="ai-model" name="aiModel" placeholder="llama-3.1-70b-versatile" />
+                </div>
+                
+                <div class="form-field">
+                  <label for="ai-prompt">Prompt инструкции за адреси</label>
+                  <textarea id="ai-prompt" name="aiPrompt" rows="6" maxlength="2000" placeholder="Инструкции за AI как да коректира адресите..."></textarea>
+                </div>
+                
+                <div class="form-actions">
+                  <button type="button" id="btn-test-ai" class="btn btn--secondary">🧪 Тест AI връзка</button>
+                  <button type="button" id="btn-save-ai" class="btn btn--primary">💾 Запази AI настройки</button>
+                </div>
+                
+                <div id="ai-test-result" class="enrichment-preview" hidden>
+                  <h4>Резултат от теста:</h4>
+                  <pre id="ai-test-output" style="white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-sm);"></pre>
+                </div>
+              </fieldset>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" id="btn-cancel-enrichment" class="btn btn--ghost">Отказ</button>
+            <button type="button" id="btn-save-enrichment" class="btn btn--primary">💾 Запази конфигурацията</button>
+            <button type="button" id="btn-process-enrichment" class="btn btn--success" style="margin-left: auto;">⚙ Обработи категория с тези настройки</button>
           </div>
         </div>
       </div>

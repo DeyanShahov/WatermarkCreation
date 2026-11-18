@@ -8,6 +8,10 @@ dist/
 build/
 *.local
 
+# Netlify
+netlify/functions/
+!.netlify/
+
 # Vite
 .env
 .env.local

@@ -27,7 +27,7 @@ export function createRefs() {
     // Gallery
     'gallery-grid', 'gallery-empty', 'gallery-count', 'btn-load-photos', 'btn-load-photos-gallery', 'btn-select-all', 'btn-deselect-all', 'btn-delete-all-photos', 'btn-process-selected',
     // Category management
-    'category-list', 'btn-add-category', 'btn-export-categories', 'btn-import-categories', 'btn-process-category',
+    'category-list', 'btn-add-category', 'btn-export-categories', 'btn-import-categories',
     'watermark-mode-selector', 'watermark-mode-full', 'watermark-mode-numberOnly',
     'number-position-options', 'number-position-top-left', 'number-position-top-right',
     'number-position-bottom-left', 'number-position-bottom-right',
@@ -35,9 +35,23 @@ export function createRefs() {
     'category-name', 'category-description', 'category-order',
     'btn-save-category', 'btn-cancel-category', 'btn-delete-category',
     // Step management
-    'step-list', 'btn-add-step', 'btn-back-category', 'step-modal', 'step-form',
+    'step-list', 'btn-add-step', 'btn-back-category', 'btn-process-category-step', 'step-modal', 'step-form',
     'step-name', 'step-description', 'step-message', 'step-photos-required', 'step-order',
     'btn-save-step', 'btn-cancel-step', 'btn-delete-step',
+    // Enrichment Modal
+    'enrichment-modal', 'enrichment-tabs',
+    'tab-address', 'tab-datetime', 'tab-weather', 'tab-watermark', 'tab-ai',
+    'panel-address', 'panel-datetime', 'panel-weather', 'panel-watermark', 'panel-ai',
+    'enrichment-address', 'enrichment-address-validated', 'btn-validate-address', 'btn-geocode-preview',
+    'enrichment-geocode-preview', 'preview-latlon-decimal', 'preview-latlon-dms', 'preview-address', 'preview-displayname', 'preview-confidence',
+    'enrichment-date', 'enrichment-time',
+    'preview-temperature', 'preview-humidity', 'btn-refresh-weather', 'weather-status',
+    'enrichment-watermark-mode', 'enrichment-number-position',
+    'enrichment-step-message', 'enrichment-category-name', 'enrichment-step-name',
+    'btn-cancel-enrichment', 'btn-save-enrichment', 'btn-process-enrichment',
+    // AI Settings
+    'ai-endpoint', 'ai-api-key', 'ai-model', 'ai-prompt',
+    'btn-test-ai', 'btn-save-ai', 'ai-test-result', 'ai-test-output',
     // Photo assignment
     'photo-selection-modal', 'photo-selection-grid', 'photo-selection-count',
     'btn-confirm-selection', 'btn-cancel-selection',
@@ -161,6 +175,36 @@ export function setBusy(button, busy, busyText = 'Зареждане…') {
   } else {
     button.textContent = button.dataset.originalText ?? button.textContent;
     button.disabled = false;
+  }
+}
+
+/** Get input element value. */
+export function getValue(id) {
+  const el = ref(id);
+  if (!el) return '';
+  return el.type === 'checkbox' ? el.checked : (el.value ?? '');
+}
+
+/** Set input element value. */
+export function setValue(id, value) {
+  const el = ref(id);
+  if (!el) return;
+  if (el.type === 'checkbox') {
+    el.checked = Boolean(value);
+  } else if (el.type === 'radio') {
+    // For radio groups, use querySelector
+    const radio = document.querySelector(`input[name="${el.name}"][value="${value}"]`);
+    if (radio) radio.checked = true;
+  } else {
+    el.value = value ?? '';
+  }
+}
+
+/** Focus an element. */
+export function focus(id) {
+  const el = ref(id);
+  if (el && typeof el.focus === 'function') {
+    el.focus();
   }
 }
 
@@ -1091,6 +1135,450 @@ export function finishProcessing(results) {
 
   if (statusEl) setText(statusEl, `Завършено: ${results.success} успешни, ${results.errors} грешки`);
   show(downloadBtn, results.success > 0);
+}
+
+/* ------------------------------ Enrichment Modal ------------------------------ */
+
+/** Show enrichment modal for category watermark configuration. */
+export async function showEnrichmentModal({ category = null, step = null, onSave, onProcess, onCancel } = {}) {
+  const modal = ref('enrichment-modal');
+  if (!modal) return;
+
+  // Store categoryId on modal for event handlers
+  const categoryId = category?.id || null;
+  modal.dataset.categoryId = categoryId;
+
+  // Reset form
+  resetEnrichmentForm();
+
+  // Set category/step info
+  if (category) {
+    setValue('enrichment-category-name', category.name);
+  }
+  if (step) {
+    setValue('enrichment-step-name', step.name);
+    setValue('enrichment-step-message', step.message || '');
+  }
+
+  // Load saved enrichment data for this category
+  if (category?.enrichment) {
+    loadEnrichmentData(category.enrichment);
+  }
+
+  // Tab switching
+  setupEnrichmentTabs();
+
+  // Load AI settings with categoryId
+  await loadAIForm(categoryId);
+
+  // Event listeners
+  setupEnrichmentEvents({ onSave, onProcess, onCancel, categoryId });
+
+  // Set default date to today
+  const today = new Date().toISOString().split('T')[0];
+  setValue('enrichment-date', today);
+
+  modal.hidden = false;
+  focus('enrichment-address');
+}
+
+/** Hide enrichment modal. */
+export function hideEnrichmentModal() {
+  const modal = ref('enrichment-modal');
+  if (modal) modal.hidden = true;
+}
+
+/** Reset enrichment form to defaults. */
+function resetEnrichmentForm() {
+  const form = ref('enrichment-modal')?.querySelector('form') || ref('enrichment-modal');
+  if (form) {
+    // Reset all inputs
+    form.querySelectorAll('input, textarea, select').forEach(el => {
+      if (el.type === 'radio' || el.type === 'checkbox') {
+        el.checked = el.defaultChecked;
+      } else {
+        el.value = el.defaultValue || '';
+      }
+    });
+  }
+  // Reset tabs
+  const tabs = ref('enrichment-tabs');
+  if (tabs) {
+    tabs.querySelectorAll('.enrichment-tab').forEach((tab, i) => {
+      tab.classList.toggle('enrichment-tab--active', i === 0);
+      tab.setAttribute('aria-selected', i === 0);
+    });
+  }
+  const panels = ['panel-address', 'panel-datetime', 'panel-weather', 'panel-watermark', 'panel-ai'];
+  panels.forEach((panelId, i) => {
+    const panel = ref(panelId);
+    if (panel) panel.hidden = i !== 0;
+  });
+  // Hide preview
+  show(ref('enrichment-geocode-preview'), false);
+  show(ref('btn-refresh-weather'), false);
+  show(ref('ai-test-result'), false);
+  setText(ref('weather-status'), 'Въведете адрес и дата, след което натиснете „🔍 Преглед на координати“ за да се извлечат метео данните.');
+}
+
+/** Load saved enrichment data into form. */
+function loadEnrichmentData(enrichment) {
+  if (!enrichment) return;
+  if (enrichment.address) setValue('enrichment-address', enrichment.address);
+  if (enrichment.addressValidated) setValue('enrichment-address-validated', enrichment.addressValidated);
+  if (enrichment.date) setValue('enrichment-date', enrichment.date);
+  if (enrichment.time) setValue('enrichment-time', enrichment.time);
+  if (enrichment.watermarkMode) setValue('enrichment-watermark-mode', enrichment.watermarkMode);
+  if (enrichment.numberPosition) {
+    const radio = document.querySelector(`input[name="enrichment-number-position"][value="${enrichment.numberPosition}"]`);
+    if (radio) radio.checked = true;
+  }
+  // Update weather preview if we have data
+  if (enrichment.temperature !== undefined) {
+    setText(ref('preview-temperature'), `${enrichment.temperature} °C`);
+  }
+  if (enrichment.humidity !== undefined) {
+    setText(ref('preview-humidity'), `${enrichment.humidity} %`);
+  }
+  show(ref('btn-refresh-weather'), true);
+  setText(ref('weather-status'), 'Метео данни са заредени от запазената конфигурация.');
+}
+
+/** Setup tab switching. */
+function setupEnrichmentTabs() {
+  const tabsContainer = ref('enrichment-tabs');
+  if (!tabsContainer) return;
+
+  const tabs = tabsContainer.querySelectorAll('.enrichment-tab');
+  tabs.forEach(tab => {
+    // Remove existing listener to avoid duplicates
+    tab.replaceWith(tab.cloneNode(true));
+  });
+  
+  // Re-query after clone
+  const newTabs = tabsContainer.querySelectorAll('.enrichment-tab');
+  newTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const targetId = tab.getAttribute('aria-controls');
+      // Update tabs
+      newTabs.forEach(t => {
+        t.classList.remove('enrichment-tab--active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      tab.classList.add('enrichment-tab--active');
+      tab.setAttribute('aria-selected', 'true');
+      // Update panels
+      ['panel-address', 'panel-datetime', 'panel-weather', 'panel-watermark', 'panel-ai'].forEach(panelId => {
+        const panel = ref(panelId);
+        if (panel) panel.hidden = panelId !== targetId;
+      });
+    });
+  });
+}
+
+/** Setup event listeners for enrichment modal. */
+function setupEnrichmentEvents({ onSave, onProcess, onCancel, categoryId }) {
+  // Close buttons
+  const closeBtn = ref('enrichment-modal')?.querySelector('.modal__close');
+  const cancelBtn = ref('btn-cancel-enrichment');
+  const saveBtn = ref('btn-save-enrichment');
+  const processBtn = ref('btn-process-enrichment');
+
+  const close = () => {
+    hideEnrichmentModal();
+    onCancel?.();
+  };
+
+  closeBtn?.addEventListener('click', close);
+  cancelBtn?.addEventListener('click', close);
+
+  // Geocode preview
+  ref('btn-geocode-preview')?.addEventListener('click', async () => {
+    const address = getValue('enrichment-address');
+    if (!address) {
+      showToast('Моля, въведете адрес.', { type: 'error' });
+      return;
+    }
+    await runGeocodePreview(address);
+  });
+
+  // Refresh weather
+  ref('btn-refresh-weather')?.addEventListener('click', async () => {
+    const address = getValue('enrichment-address-validated') || getValue('enrichment-address');
+    const date = getValue('enrichment-date');
+    const time = getValue('enrichment-time');
+    if (!address || !date) {
+      showToast('Моля, въведете адрес и дата.', { type: 'error' });
+      return;
+    }
+    await runWeatherPreview(address, date, time);
+  });
+
+  // AI Validate address - now uses real AI if configured
+  ref('btn-validate-address')?.addEventListener('click', async () => {
+    const address = getValue('enrichment-address');
+    if (!address) {
+      showToast('Моля, въведете адрес.', { type: 'error' });
+      return;
+    }
+    
+    const validateBtn = ref('btn-validate-address');
+    setBusy(validateBtn, true, 'AI валидация...');
+    
+    try {
+      const { validateAddressWithAI } = await import('../core/ai.js');
+      const corrected = await validateAddressWithAI(address, categoryId);
+      
+      if (corrected) {
+        setValue('enrichment-address-validated', corrected);
+        showToast('Адресът е коректиран от AI!', { type: 'success' });
+        await runGeocodePreview(corrected);
+      } else {
+        showToast('AI не е конфигуриран или е неуспешен. Използва се директно въведеният адрес.', { type: 'info' });
+        setValue('enrichment-address-validated', address);
+        await runGeocodePreview(address);
+      }
+    } catch (error) {
+      console.error('AI validation error:', error);
+      showToast('Грешка при AI валидация.', { type: 'error' });
+    } finally {
+      setBusy(validateBtn, false);
+    }
+  });
+
+  // AI Test connection
+  ref('btn-test-ai')?.addEventListener('click', async () => {
+    await testAIConnection(categoryId);
+  });
+
+  // AI Save settings
+  ref('btn-save-ai')?.addEventListener('click', async () => {
+    const { saveAISettings } = await import('../core/ai.js');
+    const settings = collectAISettings();
+    const saved = await saveAISettings(categoryId, settings);
+    if (saved) {
+      showToast('AI настройките са запазени за тази категория!', { type: 'success' });
+    } else {
+      showToast('Грешка при запазване на AI настройки.', { type: 'error' });
+    }
+  });
+
+  // Save configuration
+  saveBtn?.addEventListener('click', () => {
+    const config = collectEnrichmentConfig();
+    hideEnrichmentModal();
+    onSave?.(config);
+  });
+
+  // Process category
+  processBtn?.addEventListener('click', () => {
+    const config = collectEnrichmentConfig();
+    hideEnrichmentModal();
+    onProcess?.(config);
+  });
+
+  // Close on backdrop click
+  const backdrop = ref('enrichment-modal')?.querySelector('.modal__backdrop');
+  backdrop?.addEventListener('click', close);
+
+  // Close on Escape
+  const escapeHandler = (e) => {
+    if (e.key === 'Escape' && !ref('enrichment-modal').hidden) {
+      close();
+      document.removeEventListener('keydown', escapeHandler);
+    }
+  };
+  document.addEventListener('keydown', escapeHandler);
+}
+
+/** Collect enrichment configuration from form. */
+function collectEnrichmentConfig() {
+  const numberPositionRadio = document.querySelector('input[name="enrichment-number-position"]:checked');
+  return {
+    address: getValue('enrichment-address'),
+    addressValidated: getValue('enrichment-address-validated'),
+    date: getValue('enrichment-date'),
+    time: getValue('enrichment-time'),
+    watermarkMode: getValue('enrichment-watermark-mode'),
+    numberPosition: numberPositionRadio?.value || 'bottom-right'
+  };
+}
+
+/** Run geocode preview for address. */
+async function runGeocodePreview(address) {
+  const preview = ref('enrichment-geocode-preview');
+  const status = ref('weather-status');
+  
+  // Show loading
+  setText(ref('preview-latlon-decimal'), 'Зареждане...');
+  setText(ref('preview-latlon-dms'), 'Зареждане...');
+  setText(ref('preview-address'), 'Зареждане...');
+  setText(ref('preview-displayname'), 'Зареждане...');
+  setText(ref('preview-confidence'), 'Зареждане...');
+  show(preview, true);
+  if (status) setText(status, 'Геокодиране на адреса...');
+
+  try {
+    // Use the enricher (will be imported dynamically)
+    const { GeoWeatherEnricher, toDMS } = await import('../core/geo-weather-enricher.js');
+    const enricher = new GeoWeatherEnricher({
+      nominatimProxyUrl: '/.netlify/functions/geocode'
+    });
+    
+    const location = await enricher.resolveLocation(address);
+    
+    if (!location) {
+      throw new Error('Неуспешно геокодиране');
+    }
+
+    // Update preview
+    setText(ref('preview-latlon-decimal'), `${location.lat.toFixed(6)}, ${location.lon.toFixed(6)}`);
+    setText(ref('preview-latlon-dms'), `${toDMS(location.lat, true)}, ${toDMS(location.lon, false)}`);
+    setText(ref('preview-address'), location.address || '—');
+    setText(ref('preview-displayname'), location.displayName || '—');
+    setText(ref('preview-confidence'), `${Math.round(location.confidence * 100)}%`);
+    
+    // Store validated address
+    if (location.address) {
+      setValue('enrichment-address-validated', location.address);
+    }
+    
+    // Trigger weather preview if date is set
+    const date = getValue('enrichment-date');
+    const time = getValue('enrichment-time');
+    if (date) {
+      await runWeatherPreview(location.address || address, date, time);
+    } else {
+      if (status) setText(status, 'Координати са намерени. Изберете дата за да се извлечат метео данни.');
+      show(ref('btn-refresh-weather'), true);
+    }
+  } catch (error) {
+    console.error('Geocode preview error:', error);
+    setText(ref('preview-latlon-decimal'), 'Грешка');
+    setText(ref('preview-latlon-dms'), 'Грешка');
+    setText(ref('preview-address'), 'Грешка при геокодиране');
+    if (status) setText(status, `Грешка: ${error.message}`);
+  }
+}
+
+/** Run weather preview for location + date + time. */
+async function runWeatherPreview(address, date, time) {
+  const status = ref('weather-status');
+  setText(ref('preview-temperature'), 'Зареждане...');
+  setText(ref('preview-humidity'), 'Зареждане...');
+  if (status) setText(status, 'Извличане на метео данни...');
+  show(ref('btn-refresh-weather'), true);
+
+  try {
+    const { GeoWeatherEnricher, toDMS } = await import('../core/geo-weather-enricher.js');
+    const enricher = new GeoWeatherEnricher({
+      nominatimProxyUrl: '/.netlify/functions/geocode'
+    });
+
+    const location = await enricher.resolveLocation(address);
+    if (!location) throw new Error('Невалидни координати');
+
+    const weather = await enricher.getWeather(location.lat, location.lon, date, time);
+    
+    if (weather) {
+      setText(ref('preview-temperature'), `${weather.temp} °C`);
+      setText(ref('preview-humidity'), weather.humidity !== null ? `${weather.humidity} %` : '—');
+      if (status) setText(status, `Метео данни за ${date} ${time || '12:00'}: ${weather.temp}°C, ${weather.humidity !== null ? weather.humidity + '%' : 'няма данни за влажност'}`);
+    } else {
+      setText(ref('preview-temperature'), 'Няма данни');
+      setText(ref('preview-humidity'), 'Няма данни');
+      if (status) setText(status, 'Няма налични метео данни за избраната дата/час.');
+    }
+  } catch (error) {
+    console.error('Weather preview error:', error);
+    setText(ref('preview-temperature'), 'Грешка');
+    setText(ref('preview-humidity'), 'Грешка');
+    if (status) setText(status, `Грешка при извличане на метео: ${error.message}`);
+  }
+}
+
+/* ------------------------------ AI Settings (UI) ------------------------------ */
+
+const GLOBAL_DEFAULTS = {
+  endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+  apiKey: '', // Set via environment variable GROQ_API_KEY or config
+  model: 'qwen/qwen3.8-27b',
+  prompt: `You are an address validator for German addresses within 200km of Nuremberg.
+Correct ANY spelling mistakes in the address, especially street names. Common errors:
+- Missing or wrong letters in street names (e.g. "Schreckenbacherstr." should be "Schreckenbachstraße" or "Schreckenbachstr.")
+- "str." or "str" should be "straße" or "str."
+- Wrong umlauts or special characters
+Return ONLY the corrected full address in this EXACT format: "StreetName StreetNumber, PostalCode CityName"
+Do NOT put postal code before city. Always put street first, then postal code and city.
+If the address is already correct, return it unchanged in the same format.
+Example: "91541 Rothenburg, Schreckenbacherstr. 4" -> "Schreckenbachstraße 4, 91541 Rothenburg ob der Tauber"
+Example: "91322 Graefenberg, Jahn 6" -> "Jahnstraße 6, 91322 Gräfenberg"`
+};
+
+/** Load AI settings into form (with categoryId for per-category settings). */
+async function loadAIForm(categoryId = null) {
+  const { loadAISettings, getGlobalDefaults } = await import('../core/ai.js');
+  const settings = await loadAISettings(categoryId);
+  const defaults = await getGlobalDefaults();
+  
+  // Set values - if category has override, use it; otherwise use global default
+  setValue('ai-endpoint', settings.endpoint);
+  setValue('ai-api-key', settings.apiKey);
+  setValue('ai-model', settings.model);
+  setValue('ai-prompt', settings.prompt);
+  
+  // Set placeholders to show global defaults as hints
+  setPlaceholder('ai-endpoint', defaults.endpoint);
+  setPlaceholder('ai-api-key', '••••••••••••••••••••••••••••••••••••');
+  setPlaceholder('ai-model', defaults.model);
+  setPlaceholder('ai-prompt', defaults.prompt.substring(0, 100) + '...');
+}
+
+/** Set placeholder on element. */
+function setPlaceholder(id, value) {
+  const el = ref(id);
+  if (el && value) {
+    el.placeholder = value;
+  }
+}
+
+/** Collect AI settings from form (only non-empty fields). */
+function collectAISettings() {
+  return {
+    endpoint: getValue('ai-endpoint') || undefined,
+    apiKey: getValue('ai-api-key') || undefined,
+    model: getValue('ai-model') || undefined,
+    prompt: getValue('ai-prompt') || undefined
+  };
+}
+
+/** Test AI connection for a category. */
+async function testAIConnection(categoryId = null) {
+  const testBtn = ref('btn-test-ai');
+  const output = ref('ai-test-output');
+  const resultDiv = ref('ai-test-result');
+  
+  if (!testBtn) return;
+  
+  const { testAIConnection } = await import('../core/ai.js');
+  
+  setBusy(testBtn, true, 'Тестване...');
+  show(resultDiv, false);
+  
+  try {
+    const result = await testAIConnection(categoryId);
+    
+    show(resultDiv, true);
+    output.textContent = `Тестов адрес: ${result.testAddress}\n\nКоригиран: ${result.corrected}\n\n✅ AI връзката работи коректно!\nМодел: ${result.settingsUsed.model}\nEndpoint: ${result.settingsUsed.endpoint}`;
+    
+    showToast('AI тест успешен!', { type: 'success' });
+  } catch (error) {
+    show(resultDiv, true);
+    output.textContent = `Грешка: ${error.message}`;
+    showToast(`AI тест неуспешен: ${error.message}`, { type: 'error' });
+  } finally {
+    setBusy(testBtn, false);
+  }
 }
 
 /* ------------------------------ Navigation ------------------------------ */
