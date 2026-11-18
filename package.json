@@ -1,6 +1,6 @@
 {
   "name": "watermark-creation",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Приложение за водни знакове на снимки с GPS, метео, QR код и стъпки",
   "type": "module",
   "scripts": {
@@ -12,6 +12,7 @@
     "qrcode-generator": "^1.4.4"
   },
   "devDependencies": {
+    "sharp": "^0.35.5",
     "vite": "^5.4.0",
     "vite-plugin-pwa": "^0.20.0"
   }
