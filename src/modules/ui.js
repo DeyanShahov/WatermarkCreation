@@ -1000,10 +1000,17 @@ export function showQuickWatermarkModal({
   const grid = ref('quick-watermark-grid');
   const countEl = ref('quick-watermark-count');
   const positionEl = ref('quick-watermark-position');
+  const numberingEl = ref('quick-watermark-numbering');
+  const groupInputEl = ref('quick-watermark-group-input');
+  const groupValueEl = ref('quick-watermark-group-value');
   const applyBtn = ref('btn-apply-quick-watermark');
   const cancelBtn = ref('btn-cancel-quick-watermark');
 
   if (!modal || !grid) return;
+
+  // State for numbering mode
+  let numberingMode = 'sequential'; // 'sequential' | 'group'
+  let groupValue = '';
 
   // Populate position radio buttons
   if (positionEl) {
@@ -1013,20 +1020,67 @@ export function showQuickWatermarkModal({
     });
   }
 
+  // Set default numbering mode
+  if (numberingEl) {
+    const numberingRadios = numberingEl.querySelectorAll('input[name="quick-watermark-numbering"]');
+    numberingRadios.forEach(radio => {
+      radio.checked = radio.value === numberingMode;
+    });
+  }
+
+  // Hide group input initially
+  if (groupInputEl) groupInputEl.hidden = true;
+
+  // Numbering mode change handler
+  function handleNumberingModeChange() {
+    if (!numberingEl) return;
+    const checked = numberingEl.querySelector('input[name="quick-watermark-numbering"]:checked');
+    if (checked) {
+      numberingMode = checked.value;
+      // Show/hide group input
+      if (groupInputEl) {
+        groupInputEl.hidden = numberingMode !== 'group';
+      }
+      // Update badges
+      updateAllBadges();
+    }
+  }
+
+  // Group value change handler
+  function handleGroupValueChange() {
+    if (groupValueEl) {
+      groupValue = groupValueEl.value.trim();
+      updateAllBadges();
+    }
+  }
+
+  // Attach event listeners
+  if (numberingEl) {
+    numberingEl.addEventListener('change', handleNumberingModeChange);
+  }
+  if (groupValueEl) {
+    groupValueEl.addEventListener('input', handleGroupValueChange);
+  }
+
   grid.innerHTML = '';
   updateQuickWatermarkCount(selectedIds.length);
 
-  // Render selected photos in selection order (1, 2, 3...)
+  // Store card number elements for easy updates
+  const cardNumberElements = [];
+
+  // Render selected photos in selection order
   for (let i = 0; i < selectedIds.length; i++) {
     const photoId = selectedIds[i];
     const photo = photos.find(p => p.id === photoId);
     if (!photo) continue;
 
+    const badgeText = computeBadgeText(i, numberingMode, groupValue);
+
     const card = createElement('div', {
       class: 'quick-watermark-card',
       dataset: { id: photo.id },
     },
-      createElement('span', { class: 'quick-watermark-card__number' }, `#${i + 1}`),
+      createElement('span', { class: 'quick-watermark-card__number' }, badgeText),
       createElement('img', {
         class: 'quick-watermark-card__img',
         src: photo.thumbnailUrl || URL.createObjectURL(photo.thumbnail || photo.file),
@@ -1036,6 +1090,9 @@ export function showQuickWatermarkModal({
       createElement('span', { class: 'quick-watermark-card__name' }, photo.filename)
     );
     grid.appendChild(card);
+    
+    // Store reference to the number element for updates
+    cardNumberElements.push(card.querySelector('.quick-watermark-card__number'));
   }
 
   function updateQuickWatermarkCount(count) {
@@ -1049,10 +1106,29 @@ export function showQuickWatermarkModal({
     return checked ? checked.value : currentPosition;
   }
 
+  function computeBadgeText(index, mode, groupVal) {
+    switch (mode) {
+      case 'sequential':
+        return `#${index + 1}`;
+      case 'group':
+        return groupVal ? `#${groupVal}` : `#1`;
+      default:
+        return `#${index + 1}`;
+    }
+  }
+
+  function updateAllBadges() {
+    cardNumberElements.forEach((el, index) => {
+      if (el) {
+        el.textContent = computeBadgeText(index, numberingMode, groupValue);
+      }
+    });
+  }
+
   applyBtn.onclick = () => {
     const position = getSelectedPosition();
     modal.hidden = true;
-    onApply?.(selectedIds, position);
+    onApply?.(selectedIds, position, { numberingMode, groupValue });
   };
 
   cancelBtn.onclick = () => {

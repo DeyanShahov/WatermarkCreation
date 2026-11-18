@@ -577,6 +577,27 @@
               </div>
             </fieldset>
 
+            <fieldset class="quick-watermark-numbering-fieldset">
+              <legend>Начин на нумиране</legend>
+              <div id="quick-watermark-numbering" class="quick-watermark-numbering-options" role="radiogroup" aria-label="Изберете начин на нумиране">
+                <label class="numbering-option">
+                  <input type="radio" name="quick-watermark-numbering" value="sequential" checked />
+                  <span class="numbering-option__icon">1️⃣</span>
+                  <span class="numbering-option__label">Последователно (1, 2, 3...)</span>
+                </label>
+                <label class="numbering-option">
+                  <input type="radio" name="quick-watermark-numbering" value="group" />
+                  <span class="numbering-option__icon">🔢</span>
+                  <span class="numbering-option__label">Групово (едно число за всички)</span>
+                </label>
+              </div>
+              <div id="quick-watermark-group-input" class="quick-watermark-group-input" hidden>
+                <label for="quick-watermark-group-value">Стойност за бадж/воден знак:</label>
+                <input type="text" id="quick-watermark-group-value" name="quickWatermarkGroupValue" 
+                       placeholder="напр. 1, А, 5" maxlength="10" inputmode="text" />
+              </div>
+            </fieldset>
+
             <div class="quick-watermark-preview">
               <p id="quick-watermark-count" class="quick-watermark-count">Избрани: 0 снимки</p>
               <div id="quick-watermark-grid" class="quick-watermark-grid" role="list" aria-label="Снимки за бърза маркировка"></div>

@@ -1047,9 +1047,10 @@ function handleQuickWatermark() {
     photos,
     selectedIds: selectedPhotoIds,
     currentPosition,
-    onApply: async (photoIds, position) => {
+    onApply: async (photoIds, position, numberingOptions = {}) => {
       // Real implementation: apply number-only watermark to selected photos
-      console.log('🔵 [Quick Watermark] Apply clicked:', { photoIds, position, count: photoIds.length });
+      const { numberingMode = 'sequential', groupValue = '' } = numberingOptions;
+      console.log('🔵 [Quick Watermark] Apply clicked:', { photoIds, position, count: photoIds.length, numberingMode, groupValue });
       
       setState({ isProcessing: true });
       ui.showProcessModal();
@@ -1061,7 +1062,19 @@ function handleQuickWatermark() {
 
       for (let i = 0; i < selectedPhotos.length; i++) {
         const photo = selectedPhotos[i];
-        const photoNumber = i + 1; // 1-based sequential number
+        
+        // Determine photo number based on numbering mode
+        let photoNumber;
+        switch (numberingMode) {
+          case 'sequential':
+            photoNumber = i + 1; // 1-based sequential number
+            break;
+          case 'group':
+            photoNumber = groupValue || 1; // Same value for all photos
+            break;
+          default:
+            photoNumber = i + 1;
+        }
         
         ui.updateProcessProgress({
           current: i + 1,

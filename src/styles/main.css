@@ -1180,21 +1180,102 @@ main {
 }
 
 /* Quick Watermark Modal Styles */
-.quick-watermark-position-fieldset {
+.quick-watermark-position-fieldset,
+.quick-watermark-numbering-fieldset {
   margin-bottom: var(--space-4);
 }
 
-.quick-watermark-position-fieldset legend {
+.quick-watermark-position-fieldset legend,
+.quick-watermark-numbering-fieldset legend {
   font-size: var(--text-sm);
   font-weight: 500;
   margin-bottom: var(--space-2);
   color: var(--color-text-muted);
 }
 
-.quick-watermark-position-options {
+.quick-watermark-position-options,
+.quick-watermark-numbering-options {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--space-2);
+}
+
+.numbering-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.numbering-option:hover {
+  border-color: var(--color-primary);
+  background: var(--color-bg-hover);
+}
+
+.numbering-option:has(input:checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.numbering-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.numbering-option__icon {
+  font-size: var(--text-2xl);
+  line-height: 1;
+}
+
+.numbering-option__label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.quick-watermark-group-input {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+}
+
+.quick-watermark-group-input label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-bottom: var(--space-2);
+  color: var(--color-text);
+}
+
+.quick-watermark-group-input input[type="text"] {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  font-family: var(--font-sans);
+  transition: all var(--transition-fast);
+}
+
+.quick-watermark-group-input input[type="text"]:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.quick-watermark-group-input input[type="text"]::placeholder {
+  color: var(--color-text-dim);
 }
 
 .position-option {
