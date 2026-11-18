@@ -67,6 +67,8 @@ export function createRefs() {
     'quick-watermark-modal',
     // Toasts
     'toast-container',
+    // Image Preview Modal
+    'image-preview-modal', 'image-preview-modal-image', 'image-preview-modal-close',
     // Dashboard stats
     'stat-photos', 'stat-categories', 'stat-steps', 'stat-assigned',
   ];
@@ -211,7 +213,7 @@ export function focus(id) {
 /* ------------------------------ Gallery View ------------------------------ */
 
 /** Render the gallery grid. */
-export function renderGallery(photos, { selectedPhotoIds = [], onSelect, onClick, onAssign, onDelete, categories = [] } = {}) {
+export function renderGallery(photos, { selectedPhotoIds = [], onSelect, onClick, onAssign, onDelete, onPreview, categories = [] } = {}) {
   console.log('🟣 [ui.renderGallery] Called with', photos?.length || 0, 'photos, selected:', selectedPhotoIds.length);
   const grid = ref('gallery-grid');
   const empty = ref('gallery-empty');
@@ -279,6 +281,7 @@ export function renderGallery(photos, { selectedPhotoIds = [], onSelect, onClick
       onSelect, 
       onClick, 
       onDelete,
+      onPreview,        // Pass preview handler
       globalPosition: globalInfo.globalPosition,
       categoryName: globalInfo.categoryName,
       stepName: globalInfo.stepName
@@ -294,6 +297,7 @@ function createPhotoCard(photo, {
   onSelect, 
   onClick, 
   onDelete,
+  onPreview,        // NEW: double-click handler for image preview
   globalPosition = null,
   categoryName = '—',
   stepName = '—'
@@ -313,6 +317,16 @@ function createPhotoCard(photo, {
     alt: photo.filename,
     loading: 'lazy',
   });
+
+  // Double-click on image to open full-size preview
+  if (onPreview) {
+    img.addEventListener('dblclick', (e) => {
+      e.stopPropagation(); // Prevent card click
+      onPreview(photo);
+    });
+    // Add cursor style to indicate it's clickable
+    img.style.cursor = 'zoom-in';
+  }
 
   // Selection checkbox
   const checkbox = createElement('input', {
@@ -357,7 +371,7 @@ function createPhotoCard(photo, {
     card.appendChild(deleteBtn);
   }
 
-  // Click to view full size (only on card, not on buttons/checkbox)
+  // Click on card (not on image/buttons/checkbox) - for selection/assignment
   card.addEventListener('click', () => {
     console.log('🟣 [ui.card] Clicked:', photo.id);
     onClick?.(photo);
@@ -637,6 +651,7 @@ export function renderSteps(category, {
   onAssignPhotos,
   photos = [],
   onReorderPhotos,
+  onPreview,        // NEW: double-click handler for image preview
 } = {}) {
   const list = ref('step-list');
   const categoryName = ref('step-category-name');
@@ -691,6 +706,24 @@ export function renderSteps(category, {
       for (const photo of stepPhotos) {
         const localPosition = photo.position || 0;
         const globalPosition = globalPositionMap.get(photo.id) ?? 0;
+        
+        // Create image element separately to attach preview handler
+        const img = createElement('img', {
+          class: 'step-photo-card__img',
+          src: photo.thumbnailUrl || URL.createObjectURL(photo.thumbnail || photo.file),
+          alt: photo.filename,
+          loading: 'lazy',
+        });
+        
+        // Double-click on image to open full-size preview
+        if (onPreview) {
+          img.addEventListener('dblclick', (e) => {
+            e.stopPropagation(); // Prevent drag/card click
+            onPreview(photo);
+          });
+          img.style.cursor = 'zoom-in';
+        }
+        
         const photoCard = createElement('div', {
           class: 'step-photo-card',
           draggable: true,
@@ -699,12 +732,7 @@ export function renderSteps(category, {
         },
           // Show global position in badge so user sees the actual watermark number
           createElement('span', { class: 'step-photo-card__position' }, `${globalPosition}`),
-          createElement('img', {
-            class: 'step-photo-card__img',
-            src: photo.thumbnailUrl || URL.createObjectURL(photo.thumbnail || photo.file),
-            alt: photo.filename,
-            loading: 'lazy',
-          }),
+          img,
           createElement('span', { class: 'step-photo-card__name' }, photo.filename)
         );
         photosList.appendChild(photoCard);
@@ -840,6 +868,7 @@ export function showPhotoSelectionModal({
   categoryName = '',
   onConfirm,
   onCancel,
+  onPreview,        // NEW: double-click handler for image preview
 } = {}) {
   const modal = ref('photo-selection-modal');
   const grid = ref('photo-selection-grid');
@@ -876,6 +905,15 @@ export function showPhotoSelectionModal({
       alt: photo.filename,
       loading: 'lazy',
     });
+
+    // Double-click on image to open full-size preview
+    if (onPreview) {
+      img.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        onPreview(photo);
+      });
+      img.style.cursor = 'zoom-in';
+    }
 
     const checkbox = createElement('input', {
       type: 'checkbox',
@@ -1623,4 +1661,112 @@ export async function downloadAsZip(files, zipName) {
     downloadBlob(blob, filename);
     await new Promise((r) => setTimeout(r, 100)); // Small delay between downloads
   }
+}
+
+/* ------------------------------ Image Preview Modal ------------------------------ */
+
+/** Initialize image preview modal event listeners. */
+export function initImagePreview() {
+  const modal = ref('image-preview-modal');
+  const closeBtn = ref('image-preview-modal-close');
+  const backdrop = modal?.querySelector('.image-preview-modal__backdrop');
+  const imageEl = ref('image-preview-modal-image');
+
+  if (!modal || !closeBtn || !backdrop || !imageEl) {
+    console.warn('[initImagePreview] Modal elements not found');
+    return;
+  }
+
+  // Close on backdrop click
+  backdrop.addEventListener('click', closeImagePreview);
+
+  // Close on close button click
+  closeBtn.addEventListener('click', closeImagePreview);
+
+  // Close on image click (click on the large image to close)
+  imageEl.addEventListener('click', closeImagePreview);
+
+  // Close on Escape key
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('image-preview-modal--open')) {
+      closeImagePreview();
+    }
+  };
+  document.addEventListener('keydown', handleKeydown);
+
+  // Store cleanup function on modal for potential future use
+  modal._cleanupImagePreview = () => {
+    document.removeEventListener('keydown', handleKeydown);
+  };
+
+  console.log('[initImagePreview] Image preview modal initialized');
+}
+
+/** Open image preview modal with full-resolution image. */
+export function openImagePreview(photo) {
+  const modal = ref('image-preview-modal');
+  const imageEl = ref('image-preview-modal-image');
+
+  if (!modal || !imageEl || !photo) {
+    console.warn('[openImagePreview] Missing elements or photo');
+    return;
+  }
+
+  // Create object URL for the full-resolution image
+  const objectUrl = URL.createObjectURL(photo.file);
+  
+  // Store the object URL on the element for cleanup
+  imageEl.dataset.objectUrl = objectUrl;
+  
+  // Set image source and alt
+  imageEl.src = objectUrl;
+  imageEl.alt = photo.filename || 'Preview';
+
+  // Show modal with animation
+  modal.hidden = false;
+  // Force reflow for animation
+  modal.offsetHeight;
+  modal.classList.add('image-preview-modal--open');
+
+  // Prevent body scroll
+  document.body.style.overflow = 'hidden';
+
+  console.log('[openImagePreview] Opened preview for:', photo.filename);
+}
+
+/** Close image preview modal. */
+export function closeImagePreview() {
+  const modal = ref('image-preview-modal');
+  const imageEl = ref('image-preview-modal-image');
+
+  if (!modal || !imageEl) return;
+
+  // Revoke object URL to free memory
+  if (imageEl.dataset.objectUrl) {
+    URL.revokeObjectURL(imageEl.dataset.objectUrl);
+    delete imageEl.dataset.objectUrl;
+  }
+
+  // Clear image source
+  imageEl.src = '';
+  imageEl.alt = '';
+
+  // Hide modal with animation
+  modal.classList.remove('image-preview-modal--open');
+  
+  // Wait for transition to complete before hiding
+  setTimeout(() => {
+    if (!modal.classList.contains('image-preview-modal--open')) {
+      modal.hidden = true;
+      document.body.style.overflow = '';
+    }
+  }, 250); // Match transition duration
+
+  console.log('[closeImagePreview] Closed preview');
+}
+
+/** Check if image preview is currently open. */
+export function isImagePreviewOpen() {
+  const modal = ref('image-preview-modal');
+  return modal?.classList.contains('image-preview-modal--open') ?? false;
 }

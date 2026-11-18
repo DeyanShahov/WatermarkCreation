@@ -135,7 +135,10 @@ function updateSelectedCount() {
   if (countEl) countEl.textContent = count;
 }
 
-function handlePhotoClick(photo) {}
+function handlePhotoClick(photo) {
+  // Open full-size image preview on double-click (handled in UI)
+  // Single click on card does nothing - only double-click on image opens preview
+}
 
 function handlePhotoAssign(photoId) {
   const { currentCategory, currentStep } = getState();
@@ -295,6 +298,8 @@ function handleCategorySelect(category) {
     onReorder: handleReorderSteps,
     onAssignPhotos: handleAssignPhotosToStep,
     photos: getState().photos,
+    onReorderPhotos: handleReorderPhotos,
+    onPreview: (photo) => ui.openImagePreview(photo),  // Double-click to open full-size preview
   });
 }
 
@@ -827,6 +832,7 @@ function showPhotoSelectionModal(categoryId, stepId) {
     stepName: step.name,
     stepId: step.id,
     categoryName: category.name,
+    onPreview: (photo) => ui.openImagePreview(photo),  // Double-click to open full-size preview
     onConfirm: async (ids) => {
       // Update step's photoIds
       const steps = category.steps.map((s) => s.id === stepId ? { ...s, photoIds: ids } : s);
@@ -1257,6 +1263,8 @@ export async function initializeApp() {
   console.log(`🚀 Watermark Creation v${APP_VERSION} - Starting...`);
   try {
     refs = ui.createRefs();
+    // Initialize image preview modal
+    ui.initImagePreview();
     initState();
     await loadSavedData();
     wireEvents();
@@ -1287,6 +1295,7 @@ function renderAll() {
       onClick: handlePhotoClick,
       onAssign: handlePhotoAssign,
       onDelete: handleDeletePhoto,
+      onPreview: (photo) => ui.openImagePreview(photo),  // Double-click to open full-size preview
       categories: state.categories,
     });
     updateSelectedCount();
@@ -1303,6 +1312,7 @@ function renderAll() {
       onAssignPhotos: handleAssignPhotosToStep,
       photos: state.photos,
       onReorderPhotos: handleReorderPhotos,
+      onPreview: (photo) => ui.openImagePreview(photo),  // Double-click to open full-size preview
     });
   }
   const processBtn = refs['btn-process-selected'];
