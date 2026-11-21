@@ -15,6 +15,11 @@ export function ref(id) {
   return refs.get(id);
 }
 
+/** Clear a cached reference (useful after DOM element replacement). */
+export function clearRef(id) {
+  refs.delete(id);
+}
+
 /** Initialize all references at once. */
 export function createRefs() {
   const ids = [
@@ -40,8 +45,8 @@ export function createRefs() {
     'btn-save-step', 'btn-cancel-step', 'btn-delete-step',
     // Enrichment Modal
     'enrichment-modal', 'enrichment-tabs',
-    'tab-address', 'tab-datetime', 'tab-weather', 'tab-watermark', 'tab-ai',
-    'panel-address', 'panel-datetime', 'panel-weather', 'panel-watermark', 'panel-ai',
+    'tab-full-watermark', 'tab-only-digit',
+    'panel-full-watermark', 'panel-only-digit',
     'enrichment-address', 'enrichment-address-validated', 'btn-validate-address', 'btn-geocode-preview',
     'enrichment-geocode-preview', 'preview-latlon-decimal', 'preview-latlon-dms', 'preview-address', 'preview-displayname', 'preview-confidence',
     'enrichment-date', 'enrichment-time',
@@ -49,6 +54,10 @@ export function createRefs() {
     'enrichment-watermark-mode', 'enrichment-number-position',
     'enrichment-step-message', 'enrichment-category-name', 'enrichment-step-name',
     'btn-cancel-enrichment', 'btn-save-enrichment', 'btn-process-enrichment',
+    // Only Digit Tab
+    'only-digit-position', 'only-digit-numbering', 'only-digit-step-symbols',
+    'only-digit-step-symbols-grid', 'only-digit-sequential-info',
+    'only-digit-include-message',
     // AI Settings
     'ai-endpoint', 'ai-api-key', 'ai-model', 'ai-prompt',
     'btn-test-ai', 'btn-save-ai', 'ai-test-result', 'ai-test-output',
@@ -1212,6 +1221,20 @@ export function showProcessModal() {
   }
 }
 
+/** Hide processing modal and clear results. */
+export function hideProcessModal() {
+  const modal = ref('process-modal');
+  if (modal) {
+    modal.hidden = true;
+    // Clear results to avoid showing old data on next open
+    ref('process-results').innerHTML = '';
+    setText(ref('process-status'), '');
+    setText(ref('process-current'), '');
+    ref('process-progress').value = 0;
+    show(ref('btn-download-all'), false);
+  }
+}
+
 /** Update processing progress. */
 export function updateProcessProgress({ current, total, status, currentFile }) {
   const progress = ref('process-progress');
@@ -1255,12 +1278,18 @@ export function finishProcessing(results) {
 
 /** Show enrichment modal for category watermark configuration. */
 export async function showEnrichmentModal({ category = null, step = null, onSave, onProcess, onCancel } = {}) {
+  console.log('🔵 [showEnrichmentModal] === START ===');
+  console.log('🔵 [showEnrichmentModal] category:', category ? { id: category.id, name: category.name, steps: category.steps?.map(s => ({ id: s.id, name: s.name })) } : null);
+  console.log('🔵 [showEnrichmentModal] step:', step ? { id: step.id, name: step.name } : null);
+  console.log('🔵 [showEnrichmentModal] category.enrichment:', category?.enrichment);
+  
   const modal = ref('enrichment-modal');
   if (!modal) return;
 
   // Store categoryId on modal for event handlers
   const categoryId = category?.id || null;
   modal.dataset.categoryId = categoryId;
+  console.log('🔵 [showEnrichmentModal] Set modal.dataset.categoryId:', categoryId);
 
   // Reset form
   resetEnrichmentForm();
@@ -1276,7 +1305,14 @@ export async function showEnrichmentModal({ category = null, step = null, onSave
 
   // Load saved enrichment data for this category
   if (category?.enrichment) {
+    console.log('🔵 [showEnrichmentModal] Loading saved enrichment data:', category.enrichment);
     loadEnrichmentData(category.enrichment);
+  }
+
+  // Initialize Only Digit tab with category steps
+  if (category?.steps && category.steps.length > 0) {
+    console.log('🔵 [showEnrichmentModal] Initializing Only Digit tab with steps:', category.steps.map(s => ({ id: s.id, name: s.name })));
+    initOnlyDigitTab(category.steps, category.enrichment?.onlyDigit);
   }
 
   // Tab switching
@@ -1315,6 +1351,29 @@ function resetEnrichmentForm() {
       }
     });
   }
+  // Reset Only Digit tab specifically
+  const onlyDigitPositionEl = ref('only-digit-position');
+  const onlyDigitNumberingEl = ref('only-digit-numbering');
+  const onlyDigitStepSymbolsEl = ref('only-digit-step-symbols');
+  const onlyDigitStepSymbolsGridEl = ref('only-digit-step-symbols-grid');
+  const onlyDigitSequentialInfoEl = ref('only-digit-sequential-info');
+
+  if (onlyDigitPositionEl) {
+    const radios = onlyDigitPositionEl.querySelectorAll('input[name="only-digit-position"]');
+    radios.forEach(radio => {
+      radio.checked = radio.value === 'bottom-right';
+    });
+  }
+  if (onlyDigitNumberingEl) {
+    const radios = onlyDigitNumberingEl.querySelectorAll('input[name="only-digit-numbering"]');
+    radios.forEach(radio => {
+      radio.checked = radio.value === 'sequential';
+    });
+  }
+  if (onlyDigitStepSymbolsEl) onlyDigitStepSymbolsEl.hidden = true;
+  if (onlyDigitStepSymbolsGridEl) onlyDigitStepSymbolsGridEl.innerHTML = '';
+  if (onlyDigitSequentialInfoEl) onlyDigitSequentialInfoEl.hidden = false;
+
   // Reset tabs
   const tabs = ref('enrichment-tabs');
   if (tabs) {
@@ -1323,7 +1382,7 @@ function resetEnrichmentForm() {
       tab.setAttribute('aria-selected', i === 0);
     });
   }
-  const panels = ['panel-address', 'panel-datetime', 'panel-weather', 'panel-watermark', 'panel-ai'];
+  const panels = ['panel-full-watermark', 'panel-only-digit'];
   panels.forEach((panelId, i) => {
     const panel = ref(panelId);
     if (panel) panel.hidden = i !== 0;
@@ -1337,7 +1396,9 @@ function resetEnrichmentForm() {
 
 /** Load saved enrichment data into form. */
 function loadEnrichmentData(enrichment) {
+  console.log('🔵 [loadEnrichmentData] === START ===', enrichment);
   if (!enrichment) return;
+  console.log('🔵 [loadEnrichmentData] Loading enrichment:', enrichment);
   if (enrichment.address) setValue('enrichment-address', enrichment.address);
   if (enrichment.addressValidated) setValue('enrichment-address-validated', enrichment.addressValidated);
   if (enrichment.date) setValue('enrichment-date', enrichment.date);
@@ -1346,6 +1407,11 @@ function loadEnrichmentData(enrichment) {
   if (enrichment.numberPosition) {
     const radio = document.querySelector(`input[name="enrichment-number-position"][value="${enrichment.numberPosition}"]`);
     if (radio) radio.checked = true;
+  }
+  // Load onlyDigit config if present
+  if (enrichment.onlyDigit) {
+    console.log('🔵 [loadEnrichmentData] Loading onlyDigit config:', enrichment.onlyDigit);
+    // The initOnlyDigitTab will handle this
   }
   // Update weather preview if we have data
   if (enrichment.temperature !== undefined) {
@@ -1356,6 +1422,148 @@ function loadEnrichmentData(enrichment) {
   }
   show(ref('btn-refresh-weather'), true);
   setText(ref('weather-status'), 'Метео данни са заредени от запазената конфигурация.');
+}
+
+/** Initialize Only Digit tab with category steps and saved settings. */
+function initOnlyDigitTab(steps, savedOnlyDigit = null) {
+  console.log('🔵 [initOnlyDigitTab] === START ===', { steps: steps?.map(s => ({ id: s.id, name: s.name })), savedOnlyDigit });
+  const positionEl = ref('only-digit-position');
+  const numberingEl = ref('only-digit-numbering');
+  const stepSymbolsEl = ref('only-digit-step-symbols');
+  const stepSymbolsGridEl = ref('only-digit-step-symbols-grid');
+  const sequentialInfoEl = ref('only-digit-sequential-info');
+  const includeMessageEl = ref('only-digit-include-message');
+
+  if (!positionEl || !numberingEl || !stepSymbolsEl || !stepSymbolsGridEl) {
+    console.log('🔵 [initOnlyDigitTab] Missing elements, returning');
+    return;
+  }
+
+  // Default values
+  let numberingMode = 'sequential';
+  let stepSymbols = {}; // stepId -> symbol
+  let includeMessage = false;
+
+  // Load saved settings if available
+  if (savedOnlyDigit) {
+    numberingMode = savedOnlyDigit.numberingMode || 'sequential';
+    stepSymbols = savedOnlyDigit.stepSymbols || {};
+    includeMessage = savedOnlyDigit.includeMessage || false;
+    console.log('🔵 [initOnlyDigitTab] Loaded saved settings:', { numberingMode, stepSymbols, includeMessage });
+  }
+
+  // Set position radio (default to bottom-right)
+  const savedPosition = savedOnlyDigit?.position || 'bottom-right';
+  const positionRadios = positionEl.querySelectorAll('input[name="only-digit-position"]');
+  positionRadios.forEach(radio => {
+    radio.checked = radio.value === savedPosition;
+  });
+
+  // Set numbering mode radio
+  const numberingRadios = numberingEl.querySelectorAll('input[name="only-digit-numbering"]');
+  console.log(`🔵 [initOnlyDigitTab] Found numbering radios: ${numberingRadios.length}, numberingMode: ${numberingMode}`);
+  numberingRadios.forEach(radio => {
+    const shouldCheck = radio.value === numberingMode;
+    console.log(`🔵 [initOnlyDigitTab] Radio value="${radio.value}", shouldCheck=${shouldCheck}`);
+    radio.checked = shouldCheck;
+  });
+
+  // Set include message checkbox
+  if (includeMessageEl) {
+    includeMessageEl.checked = includeMessage;
+    console.log(`🔵 [initOnlyDigitTab] Set includeMessage checkbox: ${includeMessage}`);
+  }
+  
+  // Verify the radio buttons were set correctly
+  const checkedRadio = numberingEl.querySelector('input[name="only-digit-numbering"]:checked');
+  console.log(`🔵 [initOnlyDigitTab] After setting, checked radio:`, checkedRadio?.value || 'none');
+
+  // Generate step symbol inputs
+  stepSymbolsGridEl.innerHTML = '';
+  steps.forEach(step => {
+    const savedSymbol = stepSymbols[step.id] || '';
+    console.log(`🔵 [initOnlyDigitTab] Creating input for step: ${step.name} (${step.id}), savedSymbol: "${savedSymbol}"`);
+    const item = createElement('div', { class: 'step-symbol-item' },
+      createElement('label', {},
+        createElement('span', {}, `Стъпка: ${step.name}`),
+        createElement('input', {
+          type: 'text',
+          name: `only-digit-step-symbol-${step.id}`,
+          value: savedSymbol,
+          placeholder: 'напр. А, 1, ★',
+          maxlength: '10',
+          dataset: { stepId: step.id }
+        })
+      )
+    );
+    stepSymbolsGridEl.appendChild(item);
+  });
+
+  // Show/hide step symbols based on numbering mode
+  function updateStepSymbolsVisibility() {
+    const checked = numberingEl.querySelector('input[name="only-digit-numbering"]:checked');
+    if (checked) {
+      numberingMode = checked.value;
+      stepSymbolsEl.hidden = numberingMode !== 'group';
+      sequentialInfoEl.hidden = numberingMode === 'group';
+    }
+  }
+
+  // Initial visibility
+  updateStepSymbolsVisibility();
+
+  // Attach event listeners
+  numberingEl.addEventListener('change', updateStepSymbolsVisibility);
+
+  // Store references for later retrieval
+  stepSymbolsEl.dataset.numberingMode = numberingMode;
+}
+
+/** Get Only Digit configuration from form. */
+function getOnlyDigitConfig() {
+  console.log('🔵 [getOnlyDigitConfig] === START ===');
+  const positionEl = ref('only-digit-position');
+  const numberingEl = ref('only-digit-numbering');
+  const stepSymbolsGridEl = ref('only-digit-step-symbols-grid');
+  const includeMessageEl = ref('only-digit-include-message');
+
+  if (!positionEl || !numberingEl || !stepSymbolsGridEl) {
+    console.log('🔵 [getOnlyDigitConfig] Missing elements, returning null');
+    return null;
+  }
+
+  // Debug: check all radio buttons
+  const allNumberingRadios = numberingEl.querySelectorAll('input[name="only-digit-numbering"]');
+  console.log(`🔵 [getOnlyDigitConfig] All numbering radios:`, Array.from(allNumberingRadios).map(r => ({ value: r.value, checked: r.checked })));
+
+  const positionChecked = positionEl.querySelector('input[name="only-digit-position"]:checked');
+  const numberingChecked = numberingEl.querySelector('input[name="only-digit-numbering"]:checked');
+
+  console.log(`🔵 [getOnlyDigitConfig] positionChecked:`, positionChecked?.value);
+  console.log(`🔵 [getOnlyDigitConfig] numberingChecked:`, numberingChecked?.value);
+
+  const config = {
+    position: positionChecked?.value || 'bottom-right',
+    numberingMode: numberingChecked?.value || 'sequential',
+    stepSymbols: {},
+    includeMessage: includeMessageEl?.checked || false
+  };
+
+  // Collect step symbols if in group mode
+  if (config.numberingMode === 'group' && stepSymbolsGridEl) {
+    const inputs = stepSymbolsGridEl.querySelectorAll('input[type="text"]');
+    console.log('🔵 [getOnlyDigitConfig] Found step symbol inputs:', inputs.length);
+    inputs.forEach(input => {
+      const stepId = input.dataset.stepId;
+      if (stepId && input.value.trim()) {
+        config.stepSymbols[stepId] = input.value.trim();
+        console.log(`🔵 [getOnlyDigitConfig] Step symbol: ${stepId} = "${input.value.trim()}"`);
+      }
+    });
+  }
+
+  console.log('🔵 [getOnlyDigitConfig] Returning config:', config);
+  return config;
 }
 
 /** Setup tab switching. */
@@ -1382,7 +1590,7 @@ function setupEnrichmentTabs() {
       tab.classList.add('enrichment-tab--active');
       tab.setAttribute('aria-selected', 'true');
       // Update panels
-      ['panel-address', 'panel-datetime', 'panel-weather', 'panel-watermark', 'panel-ai'].forEach(panelId => {
+      ['panel-full-watermark', 'panel-only-digit'].forEach(panelId => {
         const panel = ref(panelId);
         if (panel) panel.hidden = panelId !== targetId;
       });
@@ -1392,19 +1600,43 @@ function setupEnrichmentTabs() {
 
 /** Setup event listeners for enrichment modal. */
 function setupEnrichmentEvents({ onSave, onProcess, onCancel, categoryId }) {
-  // Close buttons
+  // Close buttons - clone to remove old listeners
   const closeBtn = ref('enrichment-modal')?.querySelector('.modal__close');
   const cancelBtn = ref('btn-cancel-enrichment');
   const saveBtn = ref('btn-save-enrichment');
   const processBtn = ref('btn-process-enrichment');
+
+  // Clone buttons to remove any existing event listeners
+  if (closeBtn) {
+    closeBtn.replaceWith(closeBtn.cloneNode(true));
+    clearRef('enrichment-modal'); // Clear cache so querySelector gets new element
+  }
+  if (cancelBtn) {
+    cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+    clearRef('btn-cancel-enrichment');
+  }
+  if (saveBtn) {
+    saveBtn.replaceWith(saveBtn.cloneNode(true));
+    clearRef('btn-save-enrichment');
+  }
+  if (processBtn) {
+    processBtn.replaceWith(processBtn.cloneNode(true));
+    clearRef('btn-process-enrichment');
+  }
+
+  // Re-get references after cloning
+  const newCloseBtn = ref('enrichment-modal')?.querySelector('.modal__close');
+  const newCancelBtn = ref('btn-cancel-enrichment');
+  const newSaveBtn = ref('btn-save-enrichment');
+  const newProcessBtn = ref('btn-process-enrichment');
 
   const close = () => {
     hideEnrichmentModal();
     onCancel?.();
   };
 
-  closeBtn?.addEventListener('click', close);
-  cancelBtn?.addEventListener('click', close);
+  newCloseBtn?.addEventListener('click', close);
+  newCancelBtn?.addEventListener('click', close);
 
   // Geocode preview
   ref('btn-geocode-preview')?.addEventListener('click', async () => {
@@ -1478,15 +1710,19 @@ function setupEnrichmentEvents({ onSave, onProcess, onCancel, categoryId }) {
   });
 
   // Save configuration
-  saveBtn?.addEventListener('click', () => {
+  newSaveBtn?.addEventListener('click', () => {
     const config = collectEnrichmentConfig();
     hideEnrichmentModal();
     onSave?.(config);
   });
 
   // Process category
-  processBtn?.addEventListener('click', () => {
+  newProcessBtn?.addEventListener('click', () => {
+    console.log('🔵 [enrichment-modal] Process button clicked');
     const config = collectEnrichmentConfig();
+    console.log('🔵 [enrichment-modal] Collected config:', config);
+    const categoryId = ref('enrichment-modal')?.dataset?.categoryId;
+    console.log('🔵 [enrichment-modal] categoryId from modal:', categoryId);
     hideEnrichmentModal();
     onProcess?.(config);
   });
@@ -1507,15 +1743,20 @@ function setupEnrichmentEvents({ onSave, onProcess, onCancel, categoryId }) {
 
 /** Collect enrichment configuration from form. */
 function collectEnrichmentConfig() {
+  console.log('🔵 [collectEnrichmentConfig] === START ===');
   const numberPositionRadio = document.querySelector('input[name="enrichment-number-position"]:checked');
-  return {
+  const onlyDigitConfig = getOnlyDigitConfig();
+  const config = {
     address: getValue('enrichment-address'),
     addressValidated: getValue('enrichment-address-validated'),
     date: getValue('enrichment-date'),
     time: getValue('enrichment-time'),
     watermarkMode: getValue('enrichment-watermark-mode'),
-    numberPosition: numberPositionRadio?.value || 'bottom-right'
+    numberPosition: numberPositionRadio?.value || 'bottom-right',
+    onlyDigit: onlyDigitConfig
   };
+  console.log('🔵 [collectEnrichmentConfig] Collected config:', config);
+  return config;
 }
 
 /** Run geocode preview for address. */

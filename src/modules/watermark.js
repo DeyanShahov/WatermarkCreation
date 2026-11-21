@@ -114,6 +114,7 @@ export async function withWatermark(blob, options = {}) {
     showDescription = true,
     numberPosition = 'bottom-right', // 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
     numberFormat = 'full', // 'full' | 'number' - 'full' = "Снимка 1 от 5", 'number' = "1"
+    includeStepMessage = false, // Include step message with number
   } = options;
 
   const image = await decodeImage(blob);
@@ -178,7 +179,14 @@ export async function withWatermark(blob, options = {}) {
 
   // Photo number and category/step
   if (showPhotoNumber && (photoNumber || totalPhotos)) {
-    const numText = totalPhotos ? `Снимка ${photoNumber} от ${totalPhotos}` : `Снимка ${photoNumber}`;
+    let numText;
+    if (numberFormat === 'number') {
+      // Only the number: "1", "2", "3"
+      numText = String(photoNumber);
+    } else {
+      // Full format: "Снимка 1 от 5" or "Снимка 1"
+      numText = totalPhotos ? `Снимка ${photoNumber} от ${totalPhotos}` : `Снимка ${photoNumber}`;
+    }
     lines.push({ text: numText, size: metaSize, weight: '600' });
   }
 
@@ -226,6 +234,12 @@ export async function withWatermark(blob, options = {}) {
     }
     
     if (numberText) {
+      // If includeStepMessage is enabled and stepMessage exists, append it to the number
+      let displayText = numberText;
+      if (includeStepMessage && stepMessage) {
+        displayText = `${numberText} — ${stepMessage}`;
+      }
+
       const numberFontSize = Math.max(24, Math.round(width / 20));
       context.save();
       context.font = `700 ${numberFontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
@@ -266,9 +280,9 @@ export async function withWatermark(blob, options = {}) {
       }
 
       // Draw stroke first for contrast
-      context.strokeText(numberText, x, y);
+      context.strokeText(displayText, x, y);
       // Draw fill
-      context.fillText(numberText, x, y);
+      context.fillText(displayText, x, y);
       context.restore();
     }
   } else {

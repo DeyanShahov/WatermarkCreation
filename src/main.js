@@ -11,6 +11,7 @@
 
 import { getState, setState, subscribe } from './state.js';
 import * as ui from './modules/ui.js';
+import { clearRef } from './modules/ui.js';
 import * as storage from './modules/storage.js';
 import * as watermark from './modules/watermark.js';
 import * as qr from './modules/qr.js';
@@ -365,6 +366,12 @@ function handleReorderCategories(categoryIds) {
  */
 async function handleProcessCategoryFromStep() {
   const { currentCategory, photos, watermarkSettings } = getState();
+  
+  console.log('🔵 [handleProcessCategoryFromStep] === START ===');
+  console.log('🔵 [handleProcessCategoryFromStep] currentCategory:', currentCategory ? { id: currentCategory.id, name: currentCategory.name, steps: currentCategory.steps?.map(s => ({ id: s.id, name: s.name })) } : null);
+  console.log('🔵 [handleProcessCategoryFromStep] photos count:', photos?.length || 0);
+  console.log('🔵 [handleProcessCategoryFromStep] watermarkSettings:', watermarkSettings);
+  
   if (!currentCategory) {
     ui.showToast('Моля, първо изберете категория', { type: 'warn' });
     return;
@@ -376,10 +383,15 @@ async function handleProcessCategoryFromStep() {
     return;
   }
 
+  // Get valid step IDs for this category
+  const validStepIds = new Set(steps.map(s => s.id));
+
   // Validation: check if all steps have minimum required photos
+  // Use same filtering as processCategoryPhotos - only photos with valid stepId
   const validationErrors = [];
   for (const step of steps) {
-    const stepPhotos = photos.filter(p => p.stepId === step.id);
+    const stepPhotos = photos.filter(p => p.stepId === step.id && validStepIds.has(p.stepId));
+    console.log(`🔵 [handleProcessCategoryFromStep] Step "${step.name}" (id: ${step.id}): ${stepPhotos.length} photos, required: ${step.photosRequired || 0}`);
     if (stepPhotos.length < (step.photosRequired || 0)) {
       validationErrors.push(`Стъпка "${step.name}": ${stepPhotos.length}/${step.photosRequired} снимки`);
     }
@@ -393,22 +405,29 @@ async function handleProcessCategoryFromStep() {
   }
 
   // Show enrichment modal
+  console.log('🔵 [handleProcessCategoryFromStep] Opening enrichment modal for category:', currentCategory.name);
   ui.showEnrichmentModal({
     category: currentCategory,
-    step: currentCategory.steps?.[0] || null, // Pass first step for message info
+    step: currentCategory.steps?.[0] || null,
     onSave: async (config) => {
-      // Save enrichment config to category
+      console.log('🔵 [handleProcessCategoryFromStep] onSave callback, config:', config);
       await saveCategoryEnrichment(currentCategory.id, config);
       ui.showToast('Конфигурацията е запазена', { type: 'success' });
     },
     onProcess: async (config) => {
+      console.log('🔵 [handleProcessCategoryFromStep] onProcess callback, config:', config);
+      console.log('🔵 [handleProcessCategoryFromStep] currentCategory:', { id: currentCategory.id, name: currentCategory.name });
+      console.log('🔵 [handleProcessCategoryFromStep] photos for processing (from state):', photos?.length || 0);
+      
       // Save enrichment config to category
       await saveCategoryEnrichment(currentCategory.id, config);
       // Merge enrichment settings with watermark settings
       const mergedSettings = { ...watermarkSettings, ...config };
+      console.log('🔵 [handleProcessCategoryFromStep] mergedSettings:', mergedSettings);
       await processCategoryPhotos(currentCategory, photos, mergedSettings);
     },
     onCancel: () => {
+      console.log('🔵 [handleProcessCategoryFromStep] onCancel callback');
       ui.showToast('Обработката е отменена', { type: 'info' });
     }
   });
@@ -441,15 +460,25 @@ async function saveCategoryEnrichment(categoryId, enrichment) {
 /* ------------------------------------------------------------------ Category Processing Core */
 
 async function processCategoryPhotos(currentCategory, allPhotos, watermarkSettings) {
+  console.log('🔵 [processCategoryPhotos] === START ===');
+  console.log('🔵 [processCategoryPhotos] currentCategory:', currentCategory ? { id: currentCategory.id, name: currentCategory.name } : null);
+  console.log('🔵 [processCategoryPhotos] allPhotos count:', allPhotos?.length || 0);
+  console.log('🔵 [processCategoryPhotos] watermarkSettings:', watermarkSettings);
+  
   const steps = currentCategory.steps || [];
   if (steps.length === 0) {
     ui.showToast('Категорията няма стъпки', { type: 'warn' });
     return;
   }
 
-  // Get all photos for this category, ordered by step order and position
+  // Get valid step IDs for this category
+  const validStepIds = new Set(steps.map(s => s.id));
+  console.log('🔵 [processCategoryPhotos] Valid step IDs:', Array.from(validStepIds));
+
+  // Get all photos for this category that belong to a valid step, ordered by step order and position
+  console.log('🔵 [processCategoryPhotos] Filtering photos for categoryId:', currentCategory.id);
   const categoryPhotos = allPhotos
-    .filter(p => p.categoryId === currentCategory.id)
+    .filter(p => p.categoryId === currentCategory.id && validStepIds.has(p.stepId))
     .sort((a, b) => {
       const stepA = steps.find(s => s.id === a.stepId);
       const stepB = steps.find(s => s.id === b.stepId);
@@ -459,10 +488,27 @@ async function processCategoryPhotos(currentCategory, allPhotos, watermarkSettin
       return (a.position || 0) - (b.position || 0);
     });
 
+  console.log('🔵 [processCategoryPhotos] categoryPhotos found:', categoryPhotos.length);
+  categoryPhotos.forEach((p, idx) => {
+    const step = steps.find(s => s.id === p.stepId);
+    console.log(`  ${idx + 1}. ${p.filename} - categoryId: ${p.categoryId}, stepId: ${p.stepId}, step: ${step?.name}, position: ${p.position}`);
+  });
+
   if (categoryPhotos.length === 0) {
-    ui.showToast('Няма снимки за обработка в тази категория', { type: 'warn' });
+    ui.showToast('Няма снимки за обработка в тази категория (няма снимки с валидни стъпки)', { type: 'warn' });
     return;
   }
+
+  // Check if Only Digit mode is configured (from enrichment)
+  const onlyDigitConfig = watermarkSettings.onlyDigit;
+  const isNumberOnlyMode = watermarkSettings.watermarkMode === 'numberOnly' || (onlyDigitConfig && onlyDigitConfig.numberingMode);
+  
+  // Determine number format: 'number' for just "1", "2", "3" or 'full' for "Снимка 1 от 5"
+  const numberFormat = isNumberOnlyMode ? 'number' : 'full';
+
+  console.log('🔵 [processCategoryPhotos] isNumberOnlyMode:', isNumberOnlyMode);
+  console.log('🔵 [processCategoryPhotos] onlyDigitConfig:', onlyDigitConfig);
+  console.log('🔵 [processCategoryPhotos] numberFormat:', numberFormat);
 
   ui.showProcessModal();
   setState({ isProcessing: true });
@@ -470,6 +516,10 @@ async function processCategoryPhotos(currentCategory, allPhotos, watermarkSettin
   const results = { success: 0, errors: 0 };
   const processedBlobs = {};
   let globalNumber = 1;
+
+  // For group mode with step symbols, track step-specific numbering
+  const stepNumberCounters = {};
+  const stepSymbols = onlyDigitConfig?.stepSymbols || {};
 
   for (let i = 0; i < categoryPhotos.length; i++) {
     const photo = categoryPhotos[i];
@@ -551,13 +601,31 @@ async function processCategoryPhotos(currentCategory, allPhotos, watermarkSettin
       }
 
       let processedBlob;
-      if (watermarkSettings.watermarkMode === 'numberOnly') {
+      // Determine photo number/text based on mode
+      let photoNumberText = globalNumber;
+      let totalPhotosText = categoryPhotos.length;
+      
+      if (isNumberOnlyMode) {
+        // Only Digit mode
+        if (onlyDigitConfig?.numberingMode === 'group' && step && stepSymbols[step.id]) {
+          // Group mode with step symbol - use the configured symbol for this step
+          photoNumberText = stepSymbols[step.id];
+        } else {
+          // Sequential mode - use global number
+          photoNumberText = globalNumber;
+        }
+        // For number-only mode, totalPhotos is not shown
+        totalPhotosText = null;
+      }
+
+      if (isNumberOnlyMode) {
         processedBlob = await watermark.withWatermark(photo.file, {
           ...watermarkSettings,
-          photoNumber: globalNumber,
-          totalPhotos: categoryPhotos.length,
+          photoNumber: photoNumberText,
+          totalPhotos: totalPhotosText,
           category: currentCategory.name,
           step: stepName,
+          stepMessage: stepMessage, // Pass step message for potential inclusion
           showCoordinates: false,
           showAltitude: false,
           showDateTime: false,
@@ -566,7 +634,9 @@ async function processCategoryPhotos(currentCategory, allPhotos, watermarkSettin
           showQrCode: false,
           showCategoryStep: false,
           showDescription: false,
-          numberPosition: watermarkSettings.numberPosition,
+          numberPosition: onlyDigitConfig?.position || watermarkSettings.numberPosition,
+          numberFormat: numberFormat, // 'number' for just "1", "2", "3"
+          includeStepMessage: onlyDigitConfig?.includeMessage || false, // New option
         });
       } else {
         processedBlob = await watermark.withWatermark(photo.file, {
@@ -1174,6 +1244,15 @@ function handleNavClick(view) {
   }
 }
 
+// Helper to safely add click listener (clones element to remove old listeners)
+function addClickListener(element, handler) {
+  if (!element) return;
+  element.replaceWith(element.cloneNode(true));
+  clearRef(element.id);
+  const newEl = document.getElementById(element.id);
+  newEl?.addEventListener('click', handler);
+}
+
 function wireEvents() {
   console.log('🔵 [wireEvents] Attaching event listeners...');
   console.log('🔵 [wireEvents] refs.btn-load-photos:', refs['btn-load-photos']);
@@ -1182,34 +1261,34 @@ function wireEvents() {
   console.log('🔵 [wireEvents] refs.nav-categories:', refs['nav-categories']);
   console.log('🔵 [wireEvents] refs.nav-settings:', refs['nav-settings']);
   
-  refs['nav-main']?.addEventListener('click', () => { console.log('🟢 [nav] main clicked'); handleNavClick('main'); });
-  refs['nav-gallery']?.addEventListener('click', () => { console.log('🟢 [nav] gallery clicked'); handleNavClick('gallery'); });
-  refs['nav-categories']?.addEventListener('click', () => { console.log('🟢 [nav] category clicked'); handleNavClick('category'); });
-  refs['nav-settings']?.addEventListener('click', () => { console.log('🟢 [nav] settings clicked'); handleNavClick('settings'); });
-  refs['nav-help']?.addEventListener('click', () => { console.log('🟢 [nav] help clicked'); handleNavClick('help'); });
+  addClickListener(refs['nav-main'], () => { console.log('🟢 [nav] main clicked'); handleNavClick('main'); });
+  addClickListener(refs['nav-gallery'], () => { console.log('🟢 [nav] gallery clicked'); handleNavClick('gallery'); });
+  addClickListener(refs['nav-categories'], () => { console.log('🟢 [nav] category clicked'); handleNavClick('category'); });
+  addClickListener(refs['nav-settings'], () => { console.log('🟢 [nav] settings clicked'); handleNavClick('settings'); });
+  addClickListener(refs['nav-help'], () => { console.log('🟢 [nav] help clicked'); handleNavClick('help'); });
   // Main page quick action buttons
-  refs['nav-gallery-quick']?.addEventListener('click', () => { console.log('🟢 [nav] gallery quick clicked'); handleNavClick('gallery'); });
-  refs['nav-categories-quick']?.addEventListener('click', () => { console.log('🟢 [nav] categories quick clicked'); handleNavClick('category'); });
-  refs['btn-load-photos']?.addEventListener('click', () => { console.log('🟢 [btn] Load Photos clicked'); handleLoadPhotos(); });
-  refs['btn-load-photos-gallery']?.addEventListener('click', () => { console.log('🟢 [btn] Load Photos (Gallery) clicked'); handleLoadPhotos(); });
-  refs['btn-process-selected']?.addEventListener('click', () => { console.log('🟢 [btn] Process Selected clicked'); handleQuickWatermark(); });
-  refs['btn-select-all']?.addEventListener('click', () => { console.log('🟢 [btn] Select All clicked'); handleSelectAllPhotos(); });
-  refs['btn-deselect-all']?.addEventListener('click', () => { console.log('🟢 [btn] Deselect All clicked'); handleDeselectAllPhotos(); });
-  refs['btn-delete-all-photos']?.addEventListener('click', () => { console.log('🟢 [btn] Delete All Photos clicked'); handleDeleteAllPhotos(); });
-  refs['btn-add-category']?.addEventListener('click', () => { console.log('🟢 [btn] Add Category clicked'); handleAddCategory(); });
-  refs['btn-export-categories']?.addEventListener('click', () => { console.log('🟢 [btn] Export Categories clicked'); handleExportCategories(); });
-  refs['btn-import-categories']?.addEventListener('click', () => { console.log('🟢 [btn] Import Categories clicked'); handleImportCategories(); });
-  refs['btn-process-category-step']?.addEventListener('click', () => { console.log('🟢 [btn] Process Category from Step clicked'); handleProcessCategoryFromStep(); });
-  refs['btn-add-step']?.addEventListener('click', () => { console.log('🟢 [btn] Add Step clicked'); handleAddStep(); });
-  refs['btn-delete-step']?.addEventListener('click', () => { console.log('🟢 [btn] Delete Step clicked'); handleDeleteStep(); });
-  refs['btn-back-category']?.addEventListener('click', () => { console.log('🟢 [btn] Back to Category clicked'); handleNavClick('category'); });
-  refs['btn-download-all']?.addEventListener('click', () => { console.log('🟢 [btn] Download All clicked'); handleDownloadAll(); });
-  refs['btn-close-process']?.addEventListener('click', () => {
+  addClickListener(refs['nav-gallery-quick'], () => { console.log('🟢 [nav] gallery quick clicked'); handleNavClick('gallery'); });
+  addClickListener(refs['nav-categories-quick'], () => { console.log('🟢 [nav] categories quick clicked'); handleNavClick('category'); });
+  addClickListener(refs['btn-load-photos'], () => { console.log('🟢 [btn] Load Photos clicked'); handleLoadPhotos(); });
+  addClickListener(refs['btn-load-photos-gallery'], () => { console.log('🟢 [btn] Load Photos (Gallery) clicked'); handleLoadPhotos(); });
+  addClickListener(refs['btn-process-selected'], () => { console.log('🟢 [btn] Process Selected clicked'); handleQuickWatermark(); });
+  addClickListener(refs['btn-select-all'], () => { console.log('🟢 [btn] Select All clicked'); handleSelectAllPhotos(); });
+  addClickListener(refs['btn-deselect-all'], () => { console.log('🟢 [btn] Deselect All clicked'); handleDeselectAllPhotos(); });
+  addClickListener(refs['btn-delete-all-photos'], () => { console.log('🟢 [btn] Delete All Photos clicked'); handleDeleteAllPhotos(); });
+  addClickListener(refs['btn-add-category'], () => { console.log('🟢 [btn] Add Category clicked'); handleAddCategory(); });
+  addClickListener(refs['btn-export-categories'], () => { console.log('🟢 [btn] Export Categories clicked'); handleExportCategories(); });
+  addClickListener(refs['btn-import-categories'], () => { console.log('🟢 [btn] Import Categories clicked'); handleImportCategories(); });
+  addClickListener(refs['btn-process-category-step'], () => { console.log('🟢 [btn] Process Category from Step clicked'); handleProcessCategoryFromStep(); });
+  addClickListener(refs['btn-add-step'], () => { console.log('🟢 [btn] Add Step clicked'); handleAddStep(); });
+  addClickListener(refs['btn-delete-step'], () => { console.log('🟢 [btn] Delete Step clicked'); handleDeleteStep(); });
+  addClickListener(refs['btn-back-category'], () => { console.log('🟢 [btn] Back to Category clicked'); handleNavClick('category'); });
+  addClickListener(refs['btn-download-all'], () => { console.log('🟢 [btn] Download All clicked'); handleDownloadAll(); });
+  addClickListener(refs['btn-close-process'], () => {
     console.log('🟢 [btn] Close Process clicked');
-    refs['process-modal'].hidden = true;
+    ui.hideProcessModal();
     setState({ isProcessing: false, processedBlobs: null });
   });
-  refs['btn-save-watermark-settings']?.addEventListener('click', () => { console.log('🟢 [btn] Save Settings clicked'); handleSaveWatermarkSettings(); });
+  addClickListener(refs['btn-save-watermark-settings'], () => { console.log('🟢 [btn] Save Settings clicked'); handleSaveWatermarkSettings(); });
 
   // Attach close handlers to all modal close buttons (X in top-right)
   document.querySelectorAll('.modal__close').forEach(btn => {
@@ -1219,6 +1298,7 @@ function wireEvents() {
         modal.hidden = true;
         // Special handling for process modal
         if (modal.id === 'process-modal') {
+          ui.hideProcessModal();
           setState({ isProcessing: false, processedBlobs: null });
         }
       }

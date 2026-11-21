@@ -640,16 +640,15 @@
             <button class="modal__close" aria-label="Затвори">✕</button>
           </header>
           <div class="modal__body">
-            <div id="enrichment-tabs" class="enrichment-tabs" role="tablist" aria-label="Табове за обогатяване">
-              <button role="tab" id="tab-address" class="enrichment-tab enrichment-tab--active" aria-selected="true" aria-controls="panel-address">📍 Адрес и място</button>
-              <button role="tab" id="tab-datetime" class="enrichment-tab" aria-selected="false" aria-controls="panel-datetime">📅 Дата и време</button>
-              <button role="tab" id="tab-weather" class="enrichment-tab" aria-selected="false" aria-controls="panel-weather">🌡️ Метео (авто)</button>
-              <button role="tab" id="tab-watermark" class="enrichment-tab" aria-selected="false" aria-controls="panel-watermark">🔢 Воден знак</button>
-              <button role="tab" id="tab-ai" class="enrichment-tab" aria-selected="false" aria-controls="panel-ai">🤖 AI Настройки</button>
+            <div id="enrichment-tabs" class="enrichment-tabs" role="tablist" aria-label="Табове за конфигурация на воден знак">
+              <button role="tab" id="tab-full-watermark" class="enrichment-tab enrichment-tab--active" aria-selected="true" aria-controls="panel-full-watermark">🔢 Пълен воден знак</button>
+              <button role="tab" id="tab-only-digit" class="enrichment-tab" aria-selected="false" aria-controls="panel-only-digit">🔢 Само цифра</button>
             </div>
 
-            <!-- Panel: Address -->
-            <div role="tabpanel" id="panel-address" class="enrichment-panel" aria-labelledby="tab-address" hidden>
+            <!-- Panel: Full Watermark (combines all previous tabs) -->
+            <div role="tabpanel" id="panel-full-watermark" class="enrichment-panel" aria-labelledby="tab-full-watermark">
+              
+              <!-- Address Section -->
               <fieldset>
                 <legend>Адрес за геокодиране</legend>
                 <div class="form-field">
@@ -680,10 +679,8 @@
                   </dl>
                 </div>
               </fieldset>
-            </div>
 
-            <!-- Panel: Date & Time -->
-            <div role="tabpanel" id="panel-datetime" class="enrichment-panel" aria-labelledby="tab-datetime" hidden>
+              <!-- Date & Time Section -->
               <fieldset>
                 <legend>Дата и време за метео профил</legend>
                 <div class="form-row">
@@ -698,10 +695,8 @@
                 </div>
                 <p class="form-hint">Метео данните се извличат за конкретен час. По подразбиране: днес в 12:00.</p>
               </fieldset>
-            </div>
 
-            <!-- Panel: Weather (auto, read-only preview) -->
-            <div role="tabpanel" id="panel-weather" class="enrichment-panel" aria-labelledby="tab-weather" hidden>
+              <!-- Weather Section -->
               <fieldset>
                 <legend>Метео данни (автоматично извлечени)</legend>
                 <div class="weather-preview">
@@ -725,10 +720,8 @@
                 </div>
                 <p class="form-hint" id="weather-status">Въведете адрес и дата, след което натиснете „🔍 Преглед на координати“ за да се извлечат метео данните.</p>
               </fieldset>
-            </div>
 
-            <!-- Panel: Watermark Settings -->
-            <div role="tabpanel" id="panel-watermark" class="enrichment-panel" aria-labelledby="tab-watermark" hidden>
+            <!-- Watermark Settings Section -->
               <fieldset>
                 <legend>Настройки за воден знак</legend>
                 <div class="form-field">
@@ -776,10 +769,8 @@
                   <input type="text" id="enrichment-step-name" name="stepName" readonly />
                 </div>
               </fieldset>
-            </div>
 
-            <!-- Panel: AI Settings -->
-            <div role="tabpanel" id="panel-ai" class="enrichment-panel" aria-labelledby="tab-ai" hidden>
+              <!-- AI Settings Section -->
               <fieldset>
                 <legend>AI Настройки за валидация на адреси</legend>
                 <p class="form-hint">Конфигурирайте AI модел за автоматична корекция и валидация на български адреси. Настройките се запазват локално в браузъра.</p>
@@ -813,6 +804,83 @@
                   <h4>Резултат от теста:</h4>
                   <pre id="ai-test-output" style="white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-sm);"></pre>
                 </div>
+              </fieldset>
+
+            </div>
+
+            <!-- Panel: Only Digit -->
+            <div role="tabpanel" id="panel-only-digit" class="enrichment-panel" aria-labelledby="tab-only-digit" hidden>
+              <fieldset>
+                <legend>Само цифра / номер</legend>
+                <p class="form-hint">Конфигурирайте воден знак, съдържащ само пореден номер или символ за всяка стъпка.</p>
+
+                <!-- Position -->
+                <div class="form-field">
+                  <label>Позиция на номера</label>
+                  <div id="only-digit-position" class="number-position-options" role="radiogroup" aria-label="Изберете позиция на номера">
+                    <label class="position-option">
+                      <input type="radio" name="only-digit-position" value="top-left" />
+                      <span class="position-option__icon">↖</span>
+                      <span class="position-option__label">Горе-ляво</span>
+                    </label>
+                    <label class="position-option">
+                      <input type="radio" name="only-digit-position" value="top-right" />
+                      <span class="position-option__icon">↗</span>
+                      <span class="position-option__label">Горе-дясно</span>
+                    </label>
+                    <label class="position-option">
+                      <input type="radio" name="only-digit-position" value="bottom-left" />
+                      <span class="position-option__icon">↙</span>
+                      <span class="position-option__label">Долу-ляво</span>
+                    </label>
+                    <label class="position-option">
+                      <input type="radio" name="only-digit-position" value="bottom-right" checked />
+                      <span class="position-option__icon">↘</span>
+                      <span class="position-option__label">Долу-дясно</span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Numbering Mode -->
+                <div class="form-field">
+                  <label>Начин на нумиране</label>
+                  <div id="only-digit-numbering" class="numbering-options" role="radiogroup" aria-label="Изберете начин на нумиране">
+                    <label class="numbering-option">
+                      <input type="radio" name="only-digit-numbering" value="sequential" checked />
+                      <span class="numbering-option__icon">1️⃣</span>
+                      <span class="numbering-option__label">Последователно (1, 2, 3...)</span>
+                    </label>
+                    <label class="numbering-option">
+                      <input type="radio" name="only-digit-numbering" value="group" />
+                      <span class="numbering-option__icon">🔢</span>
+                      <span class="numbering-option__label">Групово (по символ за стъпка)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Group Mode: Step Symbols (shown when group is selected) -->
+                <div id="only-digit-step-symbols" class="step-symbols-container" hidden>
+                  <fieldset>
+                    <legend>Символи за стъпки</legend>
+                    <p class="form-hint">Въведете символ/текст за всяка стъпка. Снимките в съответната стъпка ще получат този символ като воден знак.</p>
+                    <div id="only-digit-step-symbols-grid" class="step-symbols-grid">
+                      <!-- Dynamically populated based on category steps -->
+                    </div>
+                  </fieldset>
+                </div>
+
+                <!-- Include Step Message Option -->
+                <label class="setting-row">
+                  <input type="checkbox" id="only-digit-include-message" name="includeMessage" />
+                  <span class="setting-label">Добави съобщение на стъпката към номера</span>
+                </label>
+                <p class="form-hint">Ако е отметнато и стъпката има попълнено „Съобщение (за воден знак)“, то ще се добави до номера/символа на снимките от тази стъпка.</p>
+
+                <!-- Sequential Mode Info -->
+                <div id="only-digit-sequential-info" class="form-hint">
+                  При последователно нумиране снимките се нумерват автоматично: 1, 2, 3... според реда им в категорията.
+                </div>
+
               </fieldset>
             </div>
           </div>
