@@ -33,9 +33,6 @@ export function createRefs() {
     'gallery-grid', 'gallery-empty', 'gallery-count', 'btn-load-photos', 'btn-load-photos-gallery', 'btn-select-all', 'btn-deselect-all', 'btn-delete-all-photos', 'btn-process-selected',
     // Category management
     'category-list', 'btn-add-category', 'btn-export-categories', 'btn-import-categories',
-    'watermark-mode-selector', 'watermark-mode-full', 'watermark-mode-numberOnly',
-    'number-position-options', 'number-position-top-left', 'number-position-top-right',
-    'number-position-bottom-left', 'number-position-bottom-right',
     'category-modal', 'category-form',
     'category-name', 'category-description', 'category-order',
     'btn-save-category', 'btn-cancel-category', 'btn-delete-category',
@@ -1176,34 +1173,6 @@ export function getWatermarkSettings() {
     else settings[input.name] = input.value;
   }
   return settings;
-}
-
-/** Show/hide watermark mode selector in category view. */
-export function showWatermarkModeSelector(visible) {
-  const selector = ref('watermark-mode-selector');
-  if (selector) {
-    selector.hidden = !visible;
-  }
-}
-
-/** Load watermark mode settings into selector. */
-export function loadWatermarkModeSettings(settings) {
-  // Watermark mode
-  if (settings.watermarkMode) {
-    const modeRadio = document.querySelector(`input[name="watermark-mode"][value="${settings.watermarkMode}"]`);
-    if (modeRadio) modeRadio.checked = true;
-  }
-  // Number position
-  if (settings.numberPosition) {
-    const posRadio = document.querySelector(`input[name="number-position"][value="${settings.numberPosition}"]`);
-    if (posRadio) posRadio.checked = true;
-  }
-  // Show/hide number position options based on mode
-  const numberOnlyRadio = document.getElementById('watermark-mode-numberOnly');
-  const numberPositionOptions = document.getElementById('number-position-options');
-  if (numberOnlyRadio && numberPositionOptions) {
-    numberPositionOptions.hidden = !numberOnlyRadio.checked;
-  }
 }
 
 /* ------------------------------ Processing Modal ------------------------------ */

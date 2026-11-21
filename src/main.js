@@ -475,16 +475,19 @@ async function processCategoryPhotos(currentCategory, allPhotos, watermarkSettin
   const validStepIds = new Set(steps.map(s => s.id));
   console.log('🔵 [processCategoryPhotos] Valid step IDs:', Array.from(validStepIds));
 
-  // Get all photos for this category that belong to a valid step, ordered by step order and position
+  // Create a map of stepId -> array index for sorting (match UI gallery logic)
+  const stepIndexMap = new Map();
+  steps.forEach((step, index) => stepIndexMap.set(step.id, index));
+
+  // Get all photos for this category that belong to a valid step, ordered by step array order and position
+  // This matches the UI gallery rendering logic (renderGallery) which uses array order of steps
   console.log('🔵 [processCategoryPhotos] Filtering photos for categoryId:', currentCategory.id);
   const categoryPhotos = allPhotos
     .filter(p => p.categoryId === currentCategory.id && validStepIds.has(p.stepId))
     .sort((a, b) => {
-      const stepA = steps.find(s => s.id === a.stepId);
-      const stepB = steps.find(s => s.id === b.stepId);
-      const orderA = stepA?.order ?? 999;
-      const orderB = stepB?.order ?? 999;
-      if (orderA !== orderB) return orderA - orderB;
+      const stepIndexA = stepIndexMap.get(a.stepId) ?? 999;
+      const stepIndexB = stepIndexMap.get(b.stepId) ?? 999;
+      if (stepIndexA !== stepIndexB) return stepIndexA - stepIndexB;
       return (a.position || 0) - (b.position || 0);
     });
 
@@ -1230,17 +1233,10 @@ function handleNavClick(view) {
       onDelete: handleDeleteCategory,
       onReorder: handleReorderCategories,
     });
-    // Show watermark mode selector and load saved settings
-    ui.showWatermarkModeSelector(true);
-    ui.loadWatermarkModeSettings(getState().watermarkSettings);
   } else if (view === 'gallery') {
     refreshGallery();
-    ui.showWatermarkModeSelector(false);
   } else if (view === 'settings') {
     ui.loadWatermarkSettings(getState().watermarkSettings);
-    ui.showWatermarkModeSelector(false);
-  } else {
-    ui.showWatermarkModeSelector(false);
   }
 }
 
