@@ -1,291 +1,151 @@
 /**
- * AI Module — Handles AI address validation and settings management.
- * Uses OpenAI-compatible APIs (Groq, OpenRouter, OpenAI, etc.)
+ * AI Core Module — Browser-side AI settings management and Netlify Function proxy calls.
  * 
- * Settings hierarchy:
- * - Global defaults (built-in, user's provided defaults)
- * - Category-specific overrides (stored per categoryId in IndexedDB)
- * - Per-field fallback: user value > category override > global default
+ * Architecture:
+ * - User global settings (endpoint, model) stored in IndexedDB: 'user-ai-settings' (key: 'global')
+ * - Category-specific prompts stored in IndexedDB: 'category-prompts' (key: categoryId)
+ * - API Key NEVER in browser — only in Netlify Environment Variables (GROQ_API_KEY / OPENAI_API_KEY)
+ * - All AI calls go through Netlify Function: /.netlify/functions/ai-process
+ * - Uses shared storage.js for IndexedDB access
  */
 
-// ============================================================================
-// GLOBAL DEFAULT SETTINGS (User's provided defaults as fallbacks)
-// ============================================================================
+import { 
+  loadUserSettings, 
+  saveUserSettings, 
+  loadCategoryPrompt, 
+  saveCategoryPrompt, 
+  deleteCategoryPrompt, 
+  getGlobalDefaults 
+} from '../modules/storage.js';
 
-const GLOBAL_DEFAULTS = {
-  endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-  apiKey: '', // Set via environment variable GROQ_API_KEY or config
-  model: 'qwen/qwen3.8-27b',
-  prompt: `You are an address validator for German addresses within 200km of Nuremberg.
-Correct ANY spelling mistakes in the address, especially street names. Common errors:
-- Missing or wrong letters in street names (e.g. "Schreckenbacherstr." should be "Schreckenbachstraße" or "Schreckenbachstr.")
-- "str." or "str" should be "straße" or "str."
-- Wrong umlauts or special characters
-Return ONLY the corrected full address in this EXACT format: "StreetName StreetNumber, PostalCode CityName"
-Do NOT put postal code before city. Always put street first, then postal code and city.
-If the address is already correct, return it unchanged in the same format.
-Example: "91541 Rothenburg, Schreckenbacherstr. 4" -> "Schreckenbachstraße 4, 91541 Rothenburg ob der Tauber"
-Example: "91322 Graefenberg, Jahn 6" -> "Jahnstraße 6, 91322 Gräfenberg"`
-};
+/* ------------------------------ Effective Settings Resolution ------------------------------ */
 
-// ============================================================================
-// INDEXEDDB STORAGE FOR CATEGORY-SPECIFIC AI SETTINGS
-// ============================================================================
-
-const AI_SETTINGS_DB = 'WatermarkAI';
-const AI_SETTINGS_STORE = 'category-ai-settings';
-
-/** Initialize AI settings database. */
-async function initAISettingsDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(AI_SETTINGS_DB, 2); // version 2 for new store
-    request.onupgradeneeded = (event) => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(AI_SETTINGS_STORE)) {
-        const store = db.createObjectStore(AI_SETTINGS_STORE, { keyPath: 'categoryId' });
-        store.createIndex('updatedAt', 'updatedAt', { unique: false });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-/** Load AI settings for a specific category. */
-export async function loadAISettings(categoryId = null) {
-  try {
-    const db = await initAISettingsDB();
-    
-    if (categoryId) {
-      // Load category-specific settings
-      return new Promise((resolve) => {
-        const tx = db.transaction(AI_SETTINGS_STORE, 'readonly');
-        const store = tx.objectStore(AI_SETTINGS_STORE);
-        const request = store.get(categoryId);
-        request.onsuccess = () => {
-          const categorySettings = request.result?.value || {};
-          // Merge with global defaults (per-field fallback)
-          resolve(mergeWithDefaults(categorySettings));
-        };
-        request.onerror = () => resolve(GLOBAL_DEFAULTS);
-      });
-    } else {
-      // Return global defaults only
-      return GLOBAL_DEFAULTS;
-    }
-  } catch {
-    return GLOBAL_DEFAULTS;
-  }
-}
-
-/** Save AI settings for a specific category. */
-export async function saveAISettings(categoryId, settings) {
-  if (!categoryId) {
-    console.warn('saveAISettings: categoryId is required');
-    return false;
-  }
+/**
+ * Get effective settings for a category (merges user global + category prompt + builtin defaults).
+ * Priority: category prompt > user global > builtin defaults
+ */
+export async function getEffectiveSettings(categoryId = null) {
+  const [userSettings, categoryPrompt] = await Promise.all([
+    loadUserSettings(),
+    loadCategoryPrompt(categoryId)
+  ]);
   
-  try {
-    const db = await initAISettingsDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(AI_SETTINGS_STORE, 'readwrite');
-      const store = tx.objectStore(AI_SETTINGS_STORE);
-      
-      // Only store fields that differ from global defaults (to keep storage minimal)
-      const categoryOverrides = getOverrides(settings);
-      
-      store.put({ 
-        categoryId, 
-        value: categoryOverrides,
-        updatedAt: Date.now() 
-      });
-      
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-    });
-  } catch {
-    return false;
-  }
-}
-
-/** Delete AI settings for a category (called when category is deleted). */
-export async function deleteAISettings(categoryId) {
-  if (!categoryId) return false;
-  
-  try {
-    const db = await initAISettingsDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(AI_SETTINGS_STORE, 'readwrite');
-      const store = tx.objectStore(AI_SETTINGS_STORE);
-      store.delete(categoryId);
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-    });
-  } catch {
-    return false;
-  }
-}
-
-/** Get all category AI settings (for debugging/management). */
-export async function getAllCategoryAISettings() {
-  try {
-    const db = await initAISettingsDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(AI_SETTINGS_STORE, 'readonly');
-      const store = tx.objectStore(AI_SETTINGS_STORE);
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => resolve([]);
-    });
-  } catch {
-    return [];
-  }
-}
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/** Merge user/category settings with global defaults (per-field fallback). */
-function mergeWithDefaults(categorySettings = {}) {
   return {
-    endpoint: categorySettings.endpoint ?? GLOBAL_DEFAULTS.endpoint,
-    apiKey: categorySettings.apiKey ?? GLOBAL_DEFAULTS.apiKey,
-    model: categorySettings.model ?? GLOBAL_DEFAULTS.model,
-    prompt: categorySettings.prompt ?? GLOBAL_DEFAULTS.prompt
+    endpoint: userSettings.endpoint,
+    model: userSettings.model,
+    prompt: categoryPrompt
   };
 }
 
-/** Extract only fields that differ from global defaults (for minimal storage). */
-function getOverrides(settings) {
-  const overrides = {};
-  if (settings.endpoint !== undefined && settings.endpoint !== GLOBAL_DEFAULTS.endpoint) {
-    overrides.endpoint = settings.endpoint;
+/* ------------------------------ Netlify Function Calls ------------------------------ */
+
+/**
+ * Call Netlify AI Function.
+ * @param {Object} params
+ * @param {string} params.action - 'validate-address' | 'analyze-image' | 'extract-metadata' | 'verify-content'
+ * @param {string} params.categoryId - Category ID for prompt selection
+ * @param {string} params.input - Input text (address) or base64 image
+ * @param {string} [params.prompt] - Optional custom prompt override
+ * @returns {Promise<Object>} { success, result, model, action, categoryId, usage }
+ */
+export async function callNetlifyAI({ action, categoryId, input, prompt }) {
+  const validActions = ['validate-address', 'analyze-image', 'extract-metadata', 'verify-content'];
+  if (!validActions.includes(action)) {
+    throw new Error(`Invalid action: ${action}. Valid: ${validActions.join(', ')}`);
   }
-  if (settings.apiKey !== undefined && settings.apiKey !== GLOBAL_DEFAULTS.apiKey) {
-    overrides.apiKey = settings.apiKey;
+  
+  if (!input || typeof input !== 'string' || input.trim() === '') {
+    throw new Error('Input required');
   }
-  if (settings.model !== undefined && settings.model !== GLOBAL_DEFAULTS.model) {
-    overrides.model = settings.model;
+  
+  const response = await fetch('/.netlify/functions/ai-process', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, categoryId, input, prompt })
+  });
+  
+  const data = await response.json();
+  
+  if (!response.ok) {
+    throw new Error(data.error || `AI Function error: ${response.status}`);
   }
-  if (settings.prompt !== undefined && settings.prompt !== GLOBAL_DEFAULTS.prompt) {
-    overrides.prompt = settings.prompt;
-  }
-  return overrides;
+  
+  return data;
 }
 
-/** Get effective settings for AI validation (with per-field fallback). */
-export async function getEffectiveAISettings(categoryId = null) {
-  return loadAISettings(categoryId);
-}
+/* ------------------------------ High-level AI Actions ------------------------------ */
 
-/** Validate address with AI using effective settings for category. */
+/** Validate address using AI (for enrichment modal). */
 export async function validateAddressWithAI(address, categoryId = null) {
-  const settings = await loadAISettings(categoryId);
-
-  if (!settings.apiKey || !settings.endpoint) {
-    return null; // AI not configured
-  }
-
   try {
-    const messages = [
-      { role: 'system', content: settings.prompt },
-      { role: 'user', content: address }
-    ];
-
-    const response = await fetch(settings.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${settings.apiKey}`
-      },
-      body: JSON.stringify({
-        model: settings.model,
-        messages,
-        temperature: 0,
-        max_tokens: 200
-      })
+    const result = await callNetlifyAI({
+      action: 'validate-address',
+      categoryId,
+      input: address
     });
-
-    if (!response.ok) {
-      console.warn('AI validation failed:', response.status);
-      return null;
-    }
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content?.trim() || null;
+    return result.result;
   } catch (error) {
-    console.warn('AI validation error:', error);
+    console.error('AI address validation failed:', error);
     return null;
   }
 }
 
-/** Test AI connection with a sample address. */
+/** Test AI connection for a category. */
 export async function testAIConnection(categoryId = null) {
-  const settings = await loadAISettings(categoryId);
+  const testAddress = '91541 Rothenburg, Schreckenbacherstr. 4';
+  const corrected = await validateAddressWithAI(testAddress, categoryId);
   
-  if (!settings.apiKey || !settings.endpoint) {
-    throw new Error('AI not configured');
-  }
-
-  const testAddress = '91322 Graefenberg, Jahn 6';
-  const messages = [
-    { role: 'system', content: settings.prompt },
-    { role: 'user', content: testAddress }
-  ];
-
-  const response = await fetch(settings.endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${settings.apiKey}`
-    },
-    body: JSON.stringify({
-      model: settings.model,
-      messages,
-      temperature: 0,
-      max_tokens: 200
-    })
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(`HTTP ${response.status}: ${errorData.error?.message || response.statusText}`);
-  }
-
-  const data = await response.json();
-  const corrected = data.choices?.[0]?.message?.content?.trim() || 'Няма отговор';
+  const settings = await getEffectiveSettings(categoryId);
   
   return {
-    success: true,
     testAddress,
-    corrected,
+    corrected: corrected || 'AI не върна резултат',
     settingsUsed: {
-      endpoint: settings.endpoint,
       model: settings.model,
-      hasApiKey: !!settings.apiKey
+      endpoint: settings.endpoint
     }
   };
 }
 
-/** Get global defaults (for UI placeholders/hints). */
-export function getGlobalDefaults() {
-  return { ...GLOBAL_DEFAULTS };
-}
-
-/** Check if a category has custom AI settings. */
-export async function hasCategoryOverrides(categoryId) {
-  if (!categoryId) return false;
+/** Save AI settings from UI (user global + category prompt). */
+export async function saveAISettings(categoryId, { endpoint, model, prompt }) {
   try {
-    const db = await initAISettingsDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(AI_SETTINGS_STORE, 'readonly');
-      const store = tx.objectStore(AI_SETTINGS_STORE);
-      const request = store.get(categoryId);
-      request.onsuccess = () => resolve(!!request.result);
-      request.onerror = () => resolve(false);
-    });
-  } catch {
+    // Save global settings (endpoint, model)
+    if (endpoint || model) {
+      await saveUserSettings({ endpoint, model });
+    }
+    
+    // Save category-specific prompt
+    if (prompt !== undefined && categoryId) {
+      await saveCategoryPrompt(categoryId, prompt);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Failed to save AI settings:', error);
     return false;
   }
 }
+
+/** Collect AI settings from UI form (used by ui.js). */
+export async function collectAISettingsFromForm(categoryId = null) {
+  // This is called from ui.js collectAISettings()
+  // Returns { userSettings: {endpoint, model}, categoryPrompt }
+  const userSettings = await loadUserSettings();
+  const categoryPrompt = await loadCategoryPrompt(categoryId);
+  
+  return {
+    userSettings,
+    categoryPrompt
+  };
+}
+
+// Re-export storage functions for convenience
+export { 
+  loadUserSettings, 
+  saveUserSettings, 
+  loadCategoryPrompt, 
+  saveCategoryPrompt, 
+  deleteCategoryPrompt, 
+  getGlobalDefaults 
+};

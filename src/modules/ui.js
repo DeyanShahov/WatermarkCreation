@@ -1823,37 +1823,24 @@ async function runWeatherPreview(address, date, time) {
 
 /* ------------------------------ AI Settings (UI) ------------------------------ */
 
-const GLOBAL_DEFAULTS = {
-  endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-  apiKey: '', // Set via environment variable GROQ_API_KEY or config
-  model: 'qwen/qwen3.8-27b',
-  prompt: `You are an address validator for German addresses within 200km of Nuremberg.
-Correct ANY spelling mistakes in the address, especially street names. Common errors:
-- Missing or wrong letters in street names (e.g. "Schreckenbacherstr." should be "Schreckenbachstraße" or "Schreckenbachstr.")
-- "str." or "str" should be "straße" or "str."
-- Wrong umlauts or special characters
-Return ONLY the corrected full address in this EXACT format: "StreetName StreetNumber, PostalCode CityName"
-Do NOT put postal code before city. Always put street first, then postal code and city.
-If the address is already correct, return it unchanged in the same format.
-Example: "91541 Rothenburg, Schreckenbacherstr. 4" -> "Schreckenbachstraße 4, 91541 Rothenburg ob der Tauber"
-Example: "91322 Graefenberg, Jahn 6" -> "Jahnstraße 6, 91322 Gräfenberg"`
-};
-
 /** Load AI settings into form (with categoryId for per-category settings). */
 async function loadAIForm(categoryId = null) {
-  const { loadAISettings, getGlobalDefaults } = await import('../core/ai.js');
-  const settings = await loadAISettings(categoryId);
-  const defaults = await getGlobalDefaults();
+  const { loadUserSettings, loadCategoryPrompt, getGlobalDefaults } = await import('../core/ai.js');
   
-  // Set values - if category has override, use it; otherwise use global default
-  setValue('ai-endpoint', settings.endpoint);
-  setValue('ai-api-key', settings.apiKey);
-  setValue('ai-model', settings.model);
-  setValue('ai-prompt', settings.prompt);
+  // Load user global settings (endpoint, model) and category-specific prompt in parallel
+  const [userSettings, categoryPrompt, defaults] = await Promise.all([
+    loadUserSettings(),
+    loadCategoryPrompt(categoryId),
+    getGlobalDefaults()
+  ]);
   
-  // Set placeholders to show global defaults as hints
+  // Set form values
+  setValue('ai-endpoint', userSettings.endpoint);
+  setValue('ai-model', userSettings.model);
+  setValue('ai-prompt', categoryPrompt);
+  
+  // Set placeholders to show built-in defaults as hints
   setPlaceholder('ai-endpoint', defaults.endpoint);
-  setPlaceholder('ai-api-key', '••••••••••••••••••••••••••••••••••••');
   setPlaceholder('ai-model', defaults.model);
   setPlaceholder('ai-prompt', defaults.prompt.substring(0, 100) + '...');
 }
@@ -1870,7 +1857,6 @@ function setPlaceholder(id, value) {
 function collectAISettings() {
   return {
     endpoint: getValue('ai-endpoint') || undefined,
-    apiKey: getValue('ai-api-key') || undefined,
     model: getValue('ai-model') || undefined,
     prompt: getValue('ai-prompt') || undefined
   };
@@ -1884,13 +1870,13 @@ async function testAIConnection(categoryId = null) {
   
   if (!testBtn) return;
   
-  const { testAIConnection } = await import('../core/ai.js');
+  const { testAIConnection: testAI } = await import('../core/ai.js');
   
   setBusy(testBtn, true, 'Тестване...');
   show(resultDiv, false);
   
   try {
-    const result = await testAIConnection(categoryId);
+    const result = await testAI(categoryId);
     
     show(resultDiv, true);
     output.textContent = `Тестов адрес: ${result.testAddress}\n\nКоригиран: ${result.corrected}\n\n✅ AI връзката работи коректно!\nМодел: ${result.settingsUsed.model}\nEndpoint: ${result.settingsUsed.endpoint}`;

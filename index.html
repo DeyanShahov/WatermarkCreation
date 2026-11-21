@@ -712,30 +712,27 @@
 
               <!-- AI Settings Section -->
               <fieldset>
-                <legend>AI Настройки за валидация на адреси</legend>
-                <p class="form-hint">Конфигурирайте AI модел за автоматична корекция и валидация на български адреси. Настройките се запазват локално в браузъра.</p>
-                
+                <legend>AI Настройки</legend>
+                <p class="form-hint">Глобални настройки за AI (Endpoint, Модел) са за целия проект. Prompt за категорията се запазва отделно за всяка категория. API Key се управлява в Netlify (Environment Variables) и никога не се предава в браузъра.</p>
                 <div class="form-field">
                   <label for="ai-endpoint">API Endpoint</label>
                   <input type="url" id="ai-endpoint" name="aiEndpoint" placeholder="https://api.groq.com/openai/v1/chat/completions" />
                 </div>
-                
                 <div class="form-field">
-                  <label for="ai-api-key">API Key</label>
-                  <input type="password" id="ai-api-key" name="aiApiKey" placeholder="Вашият API ключ (например gsk_...)" autocomplete="new-password" />
+                  <label>API Key статус</label>
+                  <div class="setting-row">
+                    <span class="setting-label">🔐 API Key: управлява се в Netlify Environment Variables (GROQ_API_KEY)</span>
+                  </div>
+                  <p class="form-hint">API Key се управлява в Netlify Dashboard → Site settings → Environment variables. Никога не се предава в браузъра за сигурност.</p>
                 </div>
-                
                 <div class="form-field">
                   <label for="ai-model">Модел</label>
                   <input type="text" id="ai-model" name="aiModel" placeholder="llama-3.1-70b-versatile" />
                 </div>
-                
                 <div class="form-field">
-                  <label for="ai-prompt">Prompt инструкции за адреси</label>
-                  <textarea id="ai-prompt" name="aiPrompt" rows="6" maxlength="2000" placeholder="Инструкции за AI как да коректира адресите..."></textarea>
+                  <label for="ai-prompt">Prompt за тази категория</label>
+                  <textarea id="ai-prompt" name="aiPrompt" rows="6" maxlength="2000" placeholder="Инструкции за AI какво да прави с данните за тази категория (валидация на адреси, анализ на снимки, извличане на метаданни...)..."></textarea>
                 </div>
-                
-                <div class="form-actions">
                   <button type="button" id="btn-test-ai" class="btn btn--secondary">🧪 Тест AI връзка</button>
                   <button type="button" id="btn-save-ai" class="btn btn--primary">💾 Запази AI настройки</button>
                 </div>

@@ -4,20 +4,23 @@
  */
 
 const DB_NAME = 'WatermarkCreationDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Bumped for AI settings stores
 
 const STORES = {
   PHOTOS: 'photos',
   CATEGORIES: 'categories',
   SETTINGS: 'settings',
+  USER_AI_SETTINGS: 'user-ai-settings',
+  CATEGORY_PROMPTS: 'category-prompts',
 };
 
 let dbPromise = null;
 
 /**
  * Open the IndexedDB database.
+ * Exported for use by other modules (e.g., ai.js).
  */
-function openDB() {
+export function openDB() {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
@@ -44,6 +47,16 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORES.SETTINGS)) {
         db.createObjectStore(STORES.SETTINGS, { keyPath: 'key' });
       }
+
+      // User AI Settings store (single record with key 'global')
+      if (!db.objectStoreNames.contains(STORES.USER_AI_SETTINGS)) {
+        db.createObjectStore(STORES.USER_AI_SETTINGS, { keyPath: 'id' });
+      }
+
+      // Category Prompts store (key: categoryId)
+      if (!db.objectStoreNames.contains(STORES.CATEGORY_PROMPTS)) {
+        db.createObjectStore(STORES.CATEGORY_PROMPTS, { keyPath: 'categoryId' });
+      }
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -55,8 +68,9 @@ function openDB() {
 
 /**
  * Generic helper to run a transaction.
+ * Exported for use by other modules (e.g., ai.js).
  */
-async function withStore(storeName, mode, callback) {
+export async function withStore(storeName, mode, callback) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, mode);
@@ -316,6 +330,125 @@ export async function getAllSettings() {
     });
   });
 }
+
+/* ------------------------------ AI Settings ------------------------------ */
+
+const USER_DEFAULTS_KEY = 'global';
+
+/**
+ * Load user global AI settings (endpoint, model).
+ */
+export async function loadUserSettings() {
+  return withStore(STORES.USER_AI_SETTINGS, 'readonly', (store) => {
+    return new Promise((resolve, reject) => {
+      const request = store.get(USER_DEFAULTS_KEY);
+      request.onsuccess = () => {
+        const data = request.result;
+        if (data) {
+          resolve({
+            endpoint: data.endpoint || BUILTIN_DEFAULTS.endpoint,
+            model: data.model || BUILTIN_DEFAULTS.model
+          });
+        } else {
+          resolve({ ...BUILTIN_DEFAULTS });
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  });
+}
+
+/**
+ * Save user global AI settings (endpoint, model).
+ */
+export async function saveUserSettings({ endpoint, model }) {
+  return withStore(STORES.USER_AI_SETTINGS, 'readwrite', (store) => {
+    store.put({
+      id: USER_DEFAULTS_KEY,
+      endpoint: endpoint || BUILTIN_DEFAULTS.endpoint,
+      model: model || BUILTIN_DEFAULTS.model,
+      updatedAt: Date.now()
+    });
+  });
+}
+
+/**
+ * Load category-specific prompt.
+ */
+export async function loadCategoryPrompt(categoryId) {
+  if (!categoryId) return BUILTIN_DEFAULTS.prompt;
+  
+  return withStore(STORES.CATEGORY_PROMPTS, 'readonly', (store) => {
+    return new Promise((resolve, reject) => {
+      const request = store.get(categoryId);
+      request.onsuccess = () => {
+        const data = request.result;
+        resolve(data?.prompt || BUILTIN_DEFAULTS.prompt);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  });
+}
+
+/**
+ * Save category-specific prompt.
+ */
+export async function saveCategoryPrompt(categoryId, prompt) {
+  if (!categoryId) return;
+  
+  return withStore(STORES.CATEGORY_PROMPTS, 'readwrite', (store) => {
+    store.put({
+      categoryId,
+      prompt: prompt || BUILTIN_DEFAULTS.prompt,
+      updatedAt: Date.now()
+    });
+  });
+}
+
+/**
+ * Delete category prompt.
+ */
+export async function deleteCategoryPrompt(categoryId) {
+  if (!categoryId) return;
+  return withStore(STORES.CATEGORY_PROMPTS, 'readwrite', (store) => {
+    store.delete(categoryId);
+  });
+}
+
+/**
+ * Get built-in defaults (for placeholders).
+ */
+export function getGlobalDefaults() {
+  return { ...BUILTIN_DEFAULTS };
+}
+
+// Built-in defaults (shared with ai.js)
+const BUILTIN_DEFAULTS = {
+  endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+  model: 'llama-3.1-70b-versatile',
+  prompt: `You are an address validator and corrector for Bulgarian and German addresses.
+Your task: Correct ANY spelling mistakes in the address, especially street names.
+
+Common errors to fix:
+- Missing or wrong letters in street names (e.g., "Schreckenbacherstr." should be "Schreckenbachstraße" or "Schreckenbachstr.")
+- "str." or "str" should be "straße" or "str."
+- Wrong umlauts or special characters (ä, ö, ü, ß)
+- Incorrect postal code format
+- Wrong city names or spelling
+
+Return ONLY the corrected full address in this EXACT format:
+"StreetName StreetNumber, PostalCode CityName"
+
+Rules:
+- Do NOT put postal code before city. Always put street first, then postal code and city.
+- If the address is already correct, return it unchanged in the same format.
+- Use German formatting for German addresses, Bulgarian for Bulgarian.
+
+Examples:
+- "91541 Rothenburg, Schreckenbacherstr. 4" → "Schreckenbachstraße 4, 91541 Rothenburg ob der Tauber"
+- "91322 Graefenberg, Jahn 6" → "Jahnstraße 6, 91322 Gräfenberg"
+- "ул. Витоша 10, 1000 София" → "ул. Витоша 10, 1000 София"`
+};
 
 /* ------------------------------ Utility ------------------------------ */
 
