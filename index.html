@@ -585,8 +585,9 @@
               <button role="tab" id="tab-only-digit" class="enrichment-tab" aria-selected="false" aria-controls="panel-only-digit">🔢 Само цифра</button>
             </div>
 
-            <!-- Panel: Full Watermark (combines all previous tabs) -->
-            <div role="tabpanel" id="panel-full-watermark" class="enrichment-panel" aria-labelledby="tab-full-watermark">
+            <div class="enrichment-panels-wrapper">
+              <!-- Panel: Full Watermark (combines all previous tabs) -->
+              <div role="tabpanel" id="panel-full-watermark" class="enrichment-panel" aria-labelledby="tab-full-watermark">
               
               <!-- Address Section -->
               <fieldset>
@@ -821,13 +822,16 @@
               </fieldset>
             </div>
           </div>
-          <div class="form-actions">
+          <!-- Modal Footer - only for enrichment modal -->
+          <footer class="modal__footer">
             <button type="button" id="btn-cancel-enrichment" class="btn btn--ghost">Отказ</button>
             <button type="button" id="btn-save-enrichment" class="btn btn--primary">💾 Запази конфигурацията</button>
-            <button type="button" id="btn-process-enrichment" class="btn btn--success" style="margin-left: auto;">⚙ Обработи категория с тези настройки</button>
-          </div>
+            <button type="button" id="btn-process-enrichment" class="btn btn--success">⚙ Обработи категория с тези настройки</button>
+          </footer>
         </div>
       </div>
+    </div>
+  </div>
 
       <!-- Toast container -->
       <div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
