@@ -1668,11 +1668,18 @@ function setupEnrichmentEvents({ onSave, onProcess, onCancel, categoryId }) {
 
   // AI Save settings
   ref('btn-save-ai')?.addEventListener('click', async () => {
-    const { saveAISettings } = await import('../core/ai.js');
+    const { saveAISettings, getEffectiveSettings } = await import('../core/ai.js');
     const settings = collectAISettings();
     const saved = await saveAISettings(categoryId, settings);
     if (saved) {
       showToast('AI настройките са запазени за тази категория!', { type: 'success' });
+      // Update feedback to show settings are now saved
+      const feedbackEl = document.getElementById('ai-settings-feedback');
+      if (feedbackEl) {
+        feedbackEl.innerHTML = '✅ Настройките са запазени за тази категория. Ще се заредят автоматично при следващо отваряне.';
+        feedbackEl.className = 'form-hint success';
+        feedbackEl.hidden = false;
+      }
     } else {
       showToast('Грешка при запазване на AI настройки.', { type: 'error' });
     }
@@ -1825,24 +1832,39 @@ async function runWeatherPreview(address, date, time) {
 
 /** Load AI settings into form (with categoryId for per-category settings). */
 async function loadAIForm(categoryId = null) {
-  const { loadUserSettings, loadCategoryPrompt, getGlobalDefaults } = await import('../core/ai.js');
+  const { loadUserSettings, loadCategoryAISettings, getGlobalDefaults, getEffectiveSettings } = await import('../core/ai.js');
   
-  // Load user global settings (endpoint, model) and category-specific prompt in parallel
-  const [userSettings, categoryPrompt, defaults] = await Promise.all([
+  // Load user global settings (endpoint, model) and category-specific settings (apiKey, prompt) in parallel
+  const [userSettings, categorySettings, defaults, effectiveSettings] = await Promise.all([
     loadUserSettings(),
-    loadCategoryPrompt(categoryId),
-    getGlobalDefaults()
+    categoryId ? loadCategoryAISettings(categoryId) : Promise.resolve({ apiKey: '', prompt: BUILTIN_DEFAULTS.prompt, hasSettings: false }),
+    getGlobalDefaults(),
+    categoryId ? getEffectiveSettings(categoryId) : Promise.resolve({ hasCategorySettings: false })
   ]);
   
   // Set form values
   setValue('ai-endpoint', userSettings.endpoint);
   setValue('ai-model', userSettings.model);
-  setValue('ai-prompt', categoryPrompt);
+  setValue('ai-api-key', categorySettings.apiKey);
+  setValue('ai-prompt', categorySettings.prompt);
   
   // Set placeholders to show built-in defaults as hints
   setPlaceholder('ai-endpoint', defaults.endpoint);
   setPlaceholder('ai-model', defaults.model);
   setPlaceholder('ai-prompt', defaults.prompt.substring(0, 100) + '...');
+  
+  // Show feedback about loaded settings
+  const feedbackEl = document.getElementById('ai-settings-feedback');
+  if (feedbackEl) {
+    if (effectiveSettings.hasCategorySettings) {
+      feedbackEl.innerHTML = '✅ Намерени записани настройки за тази категория в браузъра (API Key и Prompt).';
+      feedbackEl.className = 'form-hint success';
+    } else {
+      feedbackEl.innerHTML = 'ℹ️ Няма записани настройки за тази категория. Ще се използват глобалните настройки и базовия промпт.';
+      feedbackEl.className = 'form-hint info';
+    }
+    feedbackEl.hidden = false;
+  }
 }
 
 /** Set placeholder on element. */
@@ -1858,6 +1880,7 @@ function collectAISettings() {
   return {
     endpoint: getValue('ai-endpoint') || undefined,
     model: getValue('ai-model') || undefined,
+    apiKey: getValue('ai-api-key') || undefined,
     prompt: getValue('ai-prompt') || undefined
   };
 }
@@ -1910,6 +1933,17 @@ export function switchView(viewName) {
 }
 
 /* ------------------------------ Utility ------------------------------ */
+
+/** Toggle password visibility for input fields. */
+export function togglePasswordVisibility(inputId, buttonEl) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  
+  const isPassword = input.type === 'password';
+  input.type = isPassword ? 'text' : 'password';
+  buttonEl.textContent = isPassword ? '🙈' : '👁';
+  buttonEl.setAttribute('aria-label', isPassword ? 'Скрий API Key' : 'Покажи API Key');
+}
 
 /** Generate a simple ID. */
 export function generateId() {

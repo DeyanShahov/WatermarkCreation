@@ -22,6 +22,9 @@ import { fetchWeather } from './utils/weather.js';
 import { formatDateTime, makePhotoFilename } from './utils/coords.js';
 import { createThumbnail } from './utils/image.js';
 
+// Make togglePasswordVisibility globally available for HTML onclick handlers
+window.togglePasswordVisibility = ui.togglePasswordVisibility;
+
 let refs;
 
 // App version - update this when making changes

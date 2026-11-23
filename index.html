@@ -714,21 +714,22 @@
               <!-- AI Settings Section -->
               <fieldset>
                 <legend>AI Настройки</legend>
-                <p class="form-hint">Глобални настройки за AI (Endpoint, Модел) са за целия проект. Prompt за категорията се запазва отделно за всяка категория. API Key се управлява в Netlify (Environment Variables) и никога не се предава в браузъра.</p>
+                <p class="form-hint">Глобални настройки за AI (Endpoint, Модел, API Key) са за целия проект. Prompt за категорията се запазва отделно за всяка категория. Ако въведете API Key тук, ще се ползва за директни извиквания до Groq (бързо, без Netlify). Без ключ – ще се ползва Netlify Function с ключ от Environment Variables.</p>
                 <div class="form-field">
                   <label for="ai-endpoint">API Endpoint</label>
                   <input type="url" id="ai-endpoint" name="aiEndpoint" placeholder="https://api.groq.com/openai/v1/chat/completions" />
                 </div>
                 <div class="form-field">
-                  <label>API Key статус</label>
-                  <div class="setting-row">
-                    <span class="setting-label">🔐 API Key: управлява се в Netlify Environment Variables (GROQ_API_KEY)</span>
+                  <label for="ai-api-key">API Key (опционално – за директни извиквания)</label>
+                  <div class="input-with-toggle">
+                    <input type="password" id="ai-api-key" name="aiApiKey" placeholder="Въведете вашия Groq API Key за директни извиквания..." autocomplete="off" />
+                    <button type="button" class="btn-toggle-password" aria-label="Покажи/скрий API Key" onclick="togglePasswordVisibility('ai-api-key', this)">👁</button>
                   </div>
-                  <p class="form-hint">API Key се управлява в Netlify Dashboard → Site settings → Environment variables. Никога не се предава в браузъра за сигурност.</p>
+                  <p class="form-hint">Ключът се запазва само в този браузер (IndexedDB). Не се изпраща на сървъра. Ако е празен – се ползва Netlify Function с ключ от Environment Variables.</p>
                 </div>
                 <div class="form-field">
                   <label for="ai-model">Модел</label>
-                  <input type="text" id="ai-model" name="aiModel" placeholder="llama-3.1-70b-versatile" />
+                  <input type="text" id="ai-model" name="aiModel" placeholder="qwen/qwen3.8-27b" />
                 </div>
                 <div class="form-field">
                   <label for="ai-prompt">Prompt за тази категория</label>
@@ -737,6 +738,9 @@
                   <button type="button" id="btn-test-ai" class="btn btn--secondary">🧪 Тест AI връзка</button>
                   <button type="button" id="btn-save-ai" class="btn btn--primary">💾 Запази AI настройки</button>
                 </div>
+                
+                <!-- Feedback about loaded/saved settings -->
+                <div id="ai-settings-feedback" class="form-hint" hidden></div>
                 
                 <div id="ai-test-result" class="enrichment-preview" hidden>
                   <h4>Резултат от теста:</h4>

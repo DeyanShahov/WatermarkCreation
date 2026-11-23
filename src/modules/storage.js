@@ -337,6 +337,7 @@ const USER_DEFAULTS_KEY = 'global';
 
 /**
  * Load user global AI settings (endpoint, model).
+ * API Key is now stored per-category.
  */
 export async function loadUserSettings() {
   return withStore(STORES.USER_AI_SETTINGS, 'readonly', (store) => {
@@ -350,7 +351,10 @@ export async function loadUserSettings() {
             model: data.model || BUILTIN_DEFAULTS.model
           });
         } else {
-          resolve({ ...BUILTIN_DEFAULTS });
+          resolve({ 
+            endpoint: BUILTIN_DEFAULTS.endpoint,
+            model: BUILTIN_DEFAULTS.model
+          });
         }
       };
       request.onerror = () => reject(request.error);
@@ -359,7 +363,7 @@ export async function loadUserSettings() {
 }
 
 /**
- * Save user global AI settings (endpoint, model).
+ * Save user global AI settings (endpoint, model only - apiKey is per-category).
  */
 export async function saveUserSettings({ endpoint, model }) {
   return withStore(STORES.USER_AI_SETTINGS, 'readwrite', (store) => {
@@ -373,17 +377,30 @@ export async function saveUserSettings({ endpoint, model }) {
 }
 
 /**
- * Load category-specific prompt.
+ * Load category-specific AI settings (apiKey, prompt).
+ * Returns { apiKey, prompt, hasSettings: boolean }
  */
-export async function loadCategoryPrompt(categoryId) {
-  if (!categoryId) return BUILTIN_DEFAULTS.prompt;
+export async function loadCategoryAISettings(categoryId) {
+  if (!categoryId) return { apiKey: '', prompt: BUILTIN_DEFAULTS.prompt, hasSettings: false };
   
   return withStore(STORES.CATEGORY_PROMPTS, 'readonly', (store) => {
     return new Promise((resolve, reject) => {
       const request = store.get(categoryId);
       request.onsuccess = () => {
         const data = request.result;
-        resolve(data?.prompt || BUILTIN_DEFAULTS.prompt);
+        if (data) {
+          resolve({ 
+            apiKey: data.apiKey || '', 
+            prompt: data.prompt || BUILTIN_DEFAULTS.prompt,
+            hasSettings: true
+          });
+        } else {
+          resolve({ 
+            apiKey: '', 
+            prompt: BUILTIN_DEFAULTS.prompt,
+            hasSettings: false
+          });
+        }
       };
       request.onerror = () => reject(request.error);
     });
@@ -391,14 +408,15 @@ export async function loadCategoryPrompt(categoryId) {
 }
 
 /**
- * Save category-specific prompt.
+ * Save category-specific AI settings (apiKey, prompt).
  */
-export async function saveCategoryPrompt(categoryId, prompt) {
+export async function saveCategoryAISettings(categoryId, { apiKey, prompt }) {
   if (!categoryId) return;
   
   return withStore(STORES.CATEGORY_PROMPTS, 'readwrite', (store) => {
     store.put({
       categoryId,
+      apiKey: apiKey || '',
       prompt: prompt || BUILTIN_DEFAULTS.prompt,
       updatedAt: Date.now()
     });
@@ -406,13 +424,35 @@ export async function saveCategoryPrompt(categoryId, prompt) {
 }
 
 /**
- * Delete category prompt.
+ * Delete category AI settings.
  */
-export async function deleteCategoryPrompt(categoryId) {
+export async function deleteCategoryAISettings(categoryId) {
   if (!categoryId) return;
   return withStore(STORES.CATEGORY_PROMPTS, 'readwrite', (store) => {
     store.delete(categoryId);
   });
+}
+
+/**
+ * Load category-specific prompt (backward compatibility).
+ */
+export async function loadCategoryPrompt(categoryId) {
+  const settings = await loadCategoryAISettings(categoryId);
+  return settings.prompt;
+}
+
+/**
+ * Save category-specific prompt (backward compatibility).
+ */
+export async function saveCategoryPrompt(categoryId, prompt) {
+  return saveCategoryAISettings(categoryId, { prompt });
+}
+
+/**
+ * Delete category prompt (backward compatibility).
+ */
+export async function deleteCategoryPrompt(categoryId) {
+  return deleteCategoryAISettings(categoryId);
 }
 
 /**
@@ -425,7 +465,8 @@ export function getGlobalDefaults() {
 // Built-in defaults (shared with ai.js)
 const BUILTIN_DEFAULTS = {
   endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-  model: 'llama-3.1-70b-versatile',
+  model: 'qwen/qwen3.8-27b',
+  apiKey: '', // Optional: user can provide their own key for direct browser→Groq calls
   prompt: `You are an address validator and corrector for Bulgarian and German addresses.
 Your task: Correct ANY spelling mistakes in the address, especially street names.
 

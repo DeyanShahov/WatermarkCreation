@@ -2,38 +2,133 @@
  * AI Core Module — Browser-side AI settings management and Netlify Function proxy calls.
  * 
  * Architecture:
- * - User global settings (endpoint, model) stored in IndexedDB: 'user-ai-settings' (key: 'global')
+ * - User global settings (endpoint, model, apiKey) stored in IndexedDB: 'user-ai-settings' (key: 'global')
  * - Category-specific prompts stored in IndexedDB: 'category-prompts' (key: categoryId)
- * - API Key NEVER in browser — only in Netlify Environment Variables (GROQ_API_KEY / OPENAI_API_KEY)
- * - All AI calls go through Netlify Function: /.netlify/functions/ai-process
+ * - API Key CAN be stored in browser (user-provided) for direct Groq calls
+ * - If no API key in browser, calls go through Netlify Function: /.netlify/functions/ai-process (uses env var)
  * - Uses shared storage.js for IndexedDB access
+ * - Default model: qwen/qwen3.8-27b for both text and image processing
  */
 
 import { 
   loadUserSettings, 
   saveUserSettings, 
+  loadCategoryAISettings,
+  saveCategoryAISettings,
+  deleteCategoryAISettings,
   loadCategoryPrompt, 
   saveCategoryPrompt, 
   deleteCategoryPrompt, 
   getGlobalDefaults 
 } from '../modules/storage.js';
 
+/* ------------------------------ Built-in Defaults ------------------------------ */
+
+const BUILTIN_DEFAULTS = {
+  endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+  model: 'qwen/qwen3.8-27b',
+  apiKey: '', // Optional: user can provide their own key for direct browser→Groq calls
+  prompt: `You are an address validator and corrector for Bulgarian and German addresses.
+Your task: Correct ANY spelling mistakes in the address, especially street names.
+
+Common errors to fix:
+- Missing or wrong letters in street names (e.g., "Schreckenbacherstr." should be "Schreckenbachstraße" or "Schreckenbachstr.")
+- "str." or "str" should be "straße" or "str."
+- Wrong umlauts or special characters (ä, ö, ü, ß)
+- Incorrect postal code format
+- Wrong city names or spelling
+
+Return ONLY the corrected full address in this EXACT format:
+"StreetName StreetNumber, PostalCode CityName"
+
+Rules:
+- Do NOT put postal code before city. Always put street first, then postal code and city.
+- If the address is already correct, return it unchanged in the same format.
+- Use German formatting for German addresses, Bulgarian for Bulgarian.
+
+Examples:
+- "91541 Rothenburg, Schreckenbacherstr. 4" → "Schreckenbachstraße 4, 91541 Rothenburg ob der Tauber"
+- "91322 Graefenberg, Jahn 6" → "Jahnstraße 6, 91322 Gräfenberg"
+- "ул. Витоша 10, 1000 София" → "ул. Витоша 10, 1000 София"`
+};
+
 /* ------------------------------ Effective Settings Resolution ------------------------------ */
 
 /**
- * Get effective settings for a category (merges user global + category prompt + builtin defaults).
- * Priority: category prompt > user global > builtin defaults
+ * Get effective settings for a category (merges user global + category settings + builtin defaults).
+ * - endpoint, model: global (from user-ai-settings)
+ * - apiKey, prompt: per-category (from category-prompts)
+ * @param {string|null} categoryId - Category ID for prompt/apiKey selection
+ * @returns {Promise<Object>} { endpoint, model, apiKey, prompt, hasCategorySettings }
  */
 export async function getEffectiveSettings(categoryId = null) {
-  const [userSettings, categoryPrompt] = await Promise.all([
+  const [userSettings, categorySettings] = await Promise.all([
     loadUserSettings(),
-    loadCategoryPrompt(categoryId)
+    categoryId ? loadCategoryAISettings(categoryId) : Promise.resolve({ apiKey: '', prompt: BUILTIN_DEFAULTS.prompt, hasSettings: false })
   ]);
   
+  // Merge user settings with built-in defaults (user settings take priority)
+  const endpoint = userSettings.endpoint || BUILTIN_DEFAULTS.endpoint;
+  const model = userSettings.model || BUILTIN_DEFAULTS.model;
+  const apiKey = categorySettings.apiKey || BUILTIN_DEFAULTS.apiKey;
+  const prompt = categorySettings.prompt || BUILTIN_DEFAULTS.prompt;
+  
+  return { 
+    endpoint, 
+    model, 
+    apiKey, 
+    prompt,
+    hasCategorySettings: categorySettings.hasSettings || false
+  };
+}
+
+/* ------------------------------ Direct Groq API Call (when user provides API key) ------------------------------ */
+
+/**
+ * Call Groq API directly from browser (when user has provided their API key).
+ * @param {Object} params
+ * @param {string} params.endpoint
+ * @param {string} params.model
+ * @param {string} params.apiKey
+ * @param {string} params.systemPrompt
+ * @param {string} params.userInput
+ * @param {boolean} [params.isImage] - Whether input is base64 image
+ * @returns {Promise<Object>} { success, result, model, usage }
+ */
+async function callGroqDirect({ endpoint, model, apiKey, systemPrompt, userInput, isImage = false }) {
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: isImage ? [
+      { type: 'text', text: userInput },
+      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${userInput}` } }
+    ] : userInput }
+  ];
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: 2048,
+      temperature: 0.1
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error?.message || `Groq API error: ${response.status}`);
+  }
+
   return {
-    endpoint: userSettings.endpoint,
-    model: userSettings.model,
-    prompt: categoryPrompt
+    success: true,
+    result: data.choices?.[0]?.message?.content || '',
+    model: data.model || model,
+    usage: data.usage
   };
 }
 
@@ -73,12 +168,109 @@ export async function callNetlifyAI({ action, categoryId, input, prompt }) {
   return data;
 }
 
+/* ------------------------------ Unified AI Call (Smart Routing) ------------------------------ */
+
+/**
+ * Main AI call function - routes to direct Groq if user has API key, otherwise Netlify Function.
+ */
+export async function callAI({ action, categoryId, input, prompt, isImage = false }) {
+  const settings = await getEffectiveSettings(categoryId);
+  
+  let systemPrompt;
+  if (prompt && typeof prompt === 'string' && prompt.trim().length > 0) {
+    systemPrompt = prompt.trim();
+  } else {
+    switch (action) {
+      case 'validate-address':
+        systemPrompt = `You are an address validator and corrector for Bulgarian and German addresses.
+Your task: Correct ANY spelling mistakes in the address, especially street names.
+
+Common errors to fix:
+- Missing or wrong letters in street names (e.g., "Schreckenbacherstr." should be "Schreckenbachstraße" or "Schreckenbachstr.")
+- "str." or "str" should be "straße" or "str."
+- Wrong umlauts or special characters (ä, ö, ü, ß)
+- Incorrect postal code format
+- Wrong city names or spelling
+
+Return ONLY the corrected full address in this EXACT format:
+"StreetName StreetNumber, PostalCode CityName"
+
+Rules:
+- Do NOT put postal code before city. Always put street first, then postal code and city.
+- If the address is already correct, return it unchanged in the same format.
+- Use German formatting for German addresses, Bulgarian for Bulgarian.
+
+Examples:
+- "91541 Rothenburg, Schreckenbacherstr. 4" → "Schreckenbachstraße 4, 91541 Rothenburg ob der Tauber"
+- "91322 Graefenberg, Jahn 6" → "Jahnstraße 6, 91322 Gräfenberg"
+- "ул. Витоша 10, 1000 София" → "ул. Витоша 10, 1000 София"`;
+        break;
+      case 'analyze-image':
+        systemPrompt = `You are an AI image analyzer for watermarked photos.
+Analyze the provided image and return a JSON object with:
+{
+  "hasWatermark": boolean,
+  "watermarkPosition": "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center" | "unknown",
+  "detectedText": "any visible text in watermark",
+  "detectedElements": ["gps", "date", "qr-code", "weather", "number", "category", "step", "description"],
+  "imageQuality": "good" | "fair" | "poor",
+  "notes": "any observations"
+}
+Focus on detecting watermark elements and their positions.`;
+        break;
+      case 'extract-metadata':
+        systemPrompt = `You are a metadata extractor for photos.
+Extract and return ALL detectable metadata from the image as JSON:
+{
+  "exif": { "make": "", "model": "", "dateTime": "", "gps": { "lat": 0, "lon": 0, "alt": 0 }, ... },
+  "dimensions": { "width": 0, "height": 0 },
+  "fileSize": 0,
+  "format": "jpeg|png|heic|...",
+  "hasWatermark": boolean,
+  "watermarkInfo": { "position": "...", "elements": [...] }
+}
+Extract as much detail as possible from the image data.`;
+        break;
+      case 'verify-content':
+        systemPrompt = `You are a content verifier for categorized photos.
+Given the category context and image, verify if the image content matches expectations.
+
+Return JSON:
+{
+  "matchesCategory": boolean,
+  "confidence": 0-100,
+  "detectedObjects": ["object1", "object2", ...],
+  "sceneDescription": "brief description of what's in the photo",
+  "issues": ["any problems detected"],
+  "recommendations": ["suggestions for better categorization"]
+}
+Be specific about what you see and whether it matches the expected category.`;
+        break;
+      default:
+        throw new Error(`Unknown action: ${action}`);
+    }
+  }
+  
+  if (settings.apiKey && settings.apiKey.trim() !== '') {
+    return callGroqDirect({
+      endpoint: settings.endpoint,
+      model: settings.model,
+      apiKey: settings.apiKey,
+      systemPrompt,
+      userInput: input,
+      isImage
+    });
+  } else {
+    return callNetlifyAI({ action, categoryId, input, prompt: systemPrompt });
+  }
+}
+
 /* ------------------------------ High-level AI Actions ------------------------------ */
 
 /** Validate address using AI (for enrichment modal). */
 export async function validateAddressWithAI(address, categoryId = null) {
   try {
-    const result = await callNetlifyAI({
+    const result = await callAI({
       action: 'validate-address',
       categoryId,
       input: address
@@ -86,6 +278,38 @@ export async function validateAddressWithAI(address, categoryId = null) {
     return result.result;
   } catch (error) {
     console.error('AI address validation failed:', error);
+    return null;
+  }
+}
+
+/** Analyze image using AI. */
+export async function analyzeImageWithAI(base64Image, categoryId = null) {
+  try {
+    const result = await callAI({
+      action: 'analyze-image',
+      categoryId,
+      input: base64Image,
+      isImage: true
+    });
+    return result.result;
+  } catch (error) {
+    console.error('AI image analysis failed:', error);
+    return null;
+  }
+}
+
+/** Extract metadata from image using AI. */
+export async function extractMetadataWithAI(base64Image, categoryId = null) {
+  try {
+    const result = await callAI({
+      action: 'extract-metadata',
+      categoryId,
+      input: base64Image,
+      isImage: true
+    });
+    return result.result;
+  } catch (error) {
+    console.error('AI metadata extraction failed:', error);
     return null;
   }
 }
@@ -102,22 +326,23 @@ export async function testAIConnection(categoryId = null) {
     corrected: corrected || 'AI не върна резултат',
     settingsUsed: {
       model: settings.model,
-      endpoint: settings.endpoint
+      endpoint: settings.endpoint,
+      hasApiKey: !!settings.apiKey
     }
   };
 }
 
-/** Save AI settings from UI (user global + category prompt). */
-export async function saveAISettings(categoryId, { endpoint, model, prompt }) {
+/** Save AI settings from UI (global endpoint/model + per-category apiKey/prompt). */
+export async function saveAISettings(categoryId, { endpoint, model, apiKey, prompt }) {
   try {
-    // Save global settings (endpoint, model)
+    // Save global settings (endpoint, model only)
     if (endpoint || model) {
       await saveUserSettings({ endpoint, model });
     }
     
-    // Save category-specific prompt
-    if (prompt !== undefined && categoryId) {
-      await saveCategoryPrompt(categoryId, prompt);
+    // Save category-specific settings (apiKey, prompt)
+    if (categoryId && (apiKey !== undefined || prompt !== undefined)) {
+      await saveCategoryAISettings(categoryId, { apiKey, prompt });
     }
     
     return true;
@@ -130,13 +355,13 @@ export async function saveAISettings(categoryId, { endpoint, model, prompt }) {
 /** Collect AI settings from UI form (used by ui.js). */
 export async function collectAISettingsFromForm(categoryId = null) {
   // This is called from ui.js collectAISettings()
-  // Returns { userSettings: {endpoint, model}, categoryPrompt }
+  // Returns { userSettings: {endpoint, model}, categorySettings: {apiKey, prompt, hasSettings} }
   const userSettings = await loadUserSettings();
-  const categoryPrompt = await loadCategoryPrompt(categoryId);
+  const categorySettings = categoryId ? await loadCategoryAISettings(categoryId) : { apiKey: '', prompt: BUILTIN_DEFAULTS.prompt, hasSettings: false };
   
   return {
     userSettings,
-    categoryPrompt
+    categorySettings
   };
 }
 
@@ -144,6 +369,9 @@ export async function collectAISettingsFromForm(categoryId = null) {
 export { 
   loadUserSettings, 
   saveUserSettings, 
+  loadCategoryAISettings,
+  saveCategoryAISettings,
+  deleteCategoryAISettings,
   loadCategoryPrompt, 
   saveCategoryPrompt, 
   deleteCategoryPrompt, 
