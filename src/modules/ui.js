@@ -71,6 +71,11 @@ export function createRefs() {
     'process-results', 'btn-download-all', 'btn-close-process',
     // Quick Watermark
     'quick-watermark-modal',
+    'quick-watermark-position-fieldset', 'quick-watermark-numbering-fieldset',
+    'qwm-data-fieldset', 'qw-lat', 'qw-lon', 'qw-accuracy', 'qw-altitude',
+    'qw-date', 'qw-brand', 'qw-address', 'qw-temperature', 'qw-humidity', 'qw-qr',
+    'qwm-time-all-wrap', 'qw-time-all',
+    'qwm-badge-suffix-wrap', 'qw-badge-suffix',
     // Toasts
     'toast-container',
     // Image Preview Modal
@@ -994,7 +999,18 @@ export function showPhotoSelectionModal({
 
 /* ------------------------------ Quick Watermark Modal ------------------------------ */
 
-/** Show quick watermark modal for applying number-only watermark to selected photos. */
+/** Tears down the listeners of a previous quick-marking modal session. */
+let releaseQuickWatermarkListeners = null;
+
+/**
+ * Show the quick marking modal.
+ *
+ * Two modes:
+ *  - 'number':  the corner badge (position + sequential/group numbering).
+ *  - 'classic': the "Image Coordinate" panel - shared metadata fields plus a
+ *               per-photo capture hour.
+ *  - 'both':    classic panel + separate number pinned top-left.
+ */
 export function showQuickWatermarkModal({ 
   photos = [], 
   selectedIds = [], 
@@ -1011,12 +1027,27 @@ export function showQuickWatermarkModal({
   const groupValueEl = ref('quick-watermark-group-value');
   const applyBtn = ref('btn-apply-quick-watermark');
   const cancelBtn = ref('btn-cancel-quick-watermark');
+  const positionFieldsetEl = ref('quick-watermark-position-fieldset');
+  const numberingFieldsetEl = ref('quick-watermark-numbering-fieldset');
+  const dataFieldsetEl = ref('qwm-data-fieldset');
+  const timeAllWrapEl = ref('qwm-time-all-wrap');
+  const timeAllEl = ref('qw-time-all');
+  const dateEl = ref('qw-date');
+  const badgeSuffixWrapEl = ref('qwm-badge-suffix-wrap');
 
   if (!modal || !grid) return;
 
   // State for numbering mode
+  let kind = 'number'; // 'number' | 'classic'
   let numberingMode = 'sequential'; // 'sequential' | 'group'
   let groupValue = '';
+  /** Per-photo capture hour: photoId -> "HH:MM". */
+  const times = new Map();
+
+  // Default the shared date to today once.
+  if (dateEl && !dateEl.value) {
+    dateEl.value = new Date().toISOString().slice(0, 10);
+  }
 
   // Populate position radio buttons
   if (positionEl) {
@@ -1034,8 +1065,27 @@ export function showQuickWatermarkModal({
     });
   }
 
-  // Hide group input initially
-  if (groupInputEl) groupInputEl.hidden = true;
+  // Reset the processing type on every open (same behaviour as the numbering radios).
+  modal.querySelectorAll('input[name="quick-watermark-kind"]').forEach((radio) => {
+    radio.checked = radio.value === kind;
+  });
+
+  // Mode-dependent visibility:
+  //  - 'number' : only the corner badge (user picks the corner + numbering)
+  //  - 'classic': only the watermark panel
+  //  - 'both'   : panel + separate number, and the number can only sit top-left
+  function applyKindVisibility() {
+    const hasPanel = kind !== 'number';
+    const hasNumber = kind !== 'classic';
+
+    if (positionFieldsetEl) positionFieldsetEl.hidden = kind !== 'number';
+    if (numberingFieldsetEl) numberingFieldsetEl.hidden = !hasNumber;
+    if (dataFieldsetEl) dataFieldsetEl.hidden = !hasPanel;
+    if (timeAllWrapEl) timeAllWrapEl.hidden = !hasPanel;
+    if (badgeSuffixWrapEl) badgeSuffixWrapEl.hidden = kind !== 'both';
+    if (groupInputEl) groupInputEl.hidden = numberingMode !== 'group';
+    renderCards();
+  }
 
   // Numbering mode change handler
   function handleNumberingModeChange() {
@@ -1060,46 +1110,95 @@ export function showQuickWatermarkModal({
     }
   }
 
-  // Attach event listeners
-  if (numberingEl) {
-    numberingEl.addEventListener('change', handleNumberingModeChange);
-  }
-  if (groupValueEl) {
-    groupValueEl.addEventListener('input', handleGroupValueChange);
-  }
+  // Listeners are bound to THIS call's closure. Any previous open must tear its
+  // own listeners down first - otherwise change events update stale variables
+  // while the Apply button reads the current ones.
+  if (typeof releaseQuickWatermarkListeners === 'function') releaseQuickWatermarkListeners();
 
-  grid.innerHTML = '';
-  updateQuickWatermarkCount(selectedIds.length);
+  const handleModalChange = (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+
+    if (target.name === 'quick-watermark-kind') {
+      kind = target.value;
+      applyKindVisibility();
+      return;
+    }
+    if (target.name === 'quick-watermark-numbering') {
+      handleNumberingModeChange();
+      return;
+    }
+    if (target.id === 'qw-time-all') {
+      const value = target.value || '12:00';
+      grid.querySelectorAll('.quick-watermark-card__time').forEach((input) => {
+        input.value = value;
+        times.set(input.dataset.id, value);
+      });
+      return;
+    }
+    if (target.classList.contains('quick-watermark-card__time')) {
+      times.set(target.dataset.id, target.value || '12:00');
+    }
+  };
+  const handleGroupInput = () => handleGroupValueChange();
+
+  modal.addEventListener('change', handleModalChange);
+  if (groupValueEl) groupValueEl.addEventListener('input', handleGroupInput);
+
+  releaseQuickWatermarkListeners = () => {
+    modal.removeEventListener('change', handleModalChange);
+    if (groupValueEl) groupValueEl.removeEventListener('input', handleGroupInput);
+  };
 
   // Store card number elements for easy updates
   const cardNumberElements = [];
 
-  // Render selected photos in selection order
-  for (let i = 0; i < selectedIds.length; i++) {
-    const photoId = selectedIds[i];
-    const photo = photos.find(p => p.id === photoId);
-    if (!photo) continue;
+  /** (Re)render the selected photos; classic mode adds a per-photo hour field. */
+  function renderCards() {
+    grid.innerHTML = '';
+    cardNumberElements.length = 0;
 
-    const badgeText = computeBadgeText(i, numberingMode, groupValue);
+    for (let i = 0; i < selectedIds.length; i++) {
+      const photo = photos.find(p => p.id === selectedIds[i]);
+      if (!photo) continue;
 
-    const card = createElement('div', {
-      class: 'quick-watermark-card',
-      dataset: { id: photo.id },
-    },
-      createElement('span', { class: 'quick-watermark-card__number' }, badgeText),
-      createElement('img', {
-        class: 'quick-watermark-card__img',
-        src: photo.thumbnailUrl || URL.createObjectURL(photo.thumbnail || photo.file),
-        alt: photo.filename,
-        loading: 'lazy',
-      }),
-      createElement('span', { class: 'quick-watermark-card__name' }, photo.filename)
-    );
-    grid.appendChild(card);
-    
-    // Store reference to the number element for updates
-    cardNumberElements.push(card.querySelector('.quick-watermark-card__number'));
+      const badgeText = kind === 'classic'
+        ? `#${i + 1}`
+        : computeBadgeText(i, numberingMode, groupValue);
+
+      const children = [
+        createElement('span', { class: 'quick-watermark-card__number' }, badgeText),
+        createElement('img', {
+          class: 'quick-watermark-card__img',
+          src: photo.thumbnailUrl || URL.createObjectURL(photo.thumbnail || photo.file),
+          alt: photo.filename,
+          loading: 'lazy',
+        }),
+        createElement('span', { class: 'quick-watermark-card__name' }, photo.filename),
+      ];
+
+      if (kind !== 'number') {
+        children.push(createElement('input', {
+          class: 'quick-watermark-card__time',
+          type: 'time',
+          value: times.get(photo.id) || '12:00',
+          dataset: { id: photo.id },
+          'aria-label': `Час на снимане за ${photo.filename}`,
+        }));
+      }
+
+      const card = createElement('div', {
+        class: 'quick-watermark-card',
+        dataset: { id: photo.id },
+      }, ...children);
+      grid.appendChild(card);
+      cardNumberElements.push(card.querySelector('.quick-watermark-card__number'));
+    }
   }
+
+  // Initial paint of the mode-dependent UI.
+  applyKindVisibility();
+  updateQuickWatermarkCount(selectedIds.length);
 
   function updateQuickWatermarkCount(count) {
     setText(countEl, `Избрани: ${count} снимки`);
@@ -1131,10 +1230,53 @@ export function showQuickWatermarkModal({
     });
   }
 
+  /** Parse a form value; empty/invalid becomes null. */
+  function readNumber(value) {
+    if (value === null || value === undefined || String(value).trim() === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** Shared metadata for the classic panel. */
+  function collectSharedData() {
+    return {
+      latitude: readNumber(ref('qw-lat')?.value),
+      longitude: readNumber(ref('qw-lon')?.value),
+      accuracy: readNumber(ref('qw-accuracy')?.value),
+      altitude: readNumber(ref('qw-altitude')?.value),
+      date: ref('qw-date')?.value || null,
+      address: ref('qw-address')?.value.trim() || null,
+      temperature: readNumber(ref('qw-temperature')?.value),
+      humidity: readNumber(ref('qw-humidity')?.value),
+      brand: ref('qw-brand')?.value.trim() || '',
+      qr: Boolean(ref('qw-qr')?.checked),
+    };
+  }
+
   applyBtn.onclick = () => {
-    const position = getSelectedPosition();
     modal.hidden = true;
-    onApply?.(selectedIds, position, { numberingMode, groupValue });
+    if (kind === 'number') {
+      onApply?.(selectedIds, getSelectedPosition(), { kind: 'number', numberingMode, groupValue });
+      return;
+    }
+    // Make sure every card's hour is captured, including untouched defaults.
+    grid.querySelectorAll('.quick-watermark-card__time').forEach((input) => {
+      times.set(input.dataset.id, input.value || '12:00');
+    });
+
+    const payload = {
+      kind, // 'classic' | 'both'
+      shared: collectSharedData(),
+      times: Object.fromEntries(times),
+    };
+    if (kind === 'both') {
+      payload.badge = {
+        numberingMode,
+        groupValue,
+        suffix: ref('qw-badge-suffix')?.value.trim() || '',
+      };
+    }
+    onApply?.(selectedIds, null, payload);
   };
 
   cancelBtn.onclick = () => {

@@ -1327,6 +1327,116 @@ main {
   max-width: 100%;
 }
 
+/* Quick Watermark modal - mode switch + classic data fields */
+.qwm-mode-fieldset {
+  margin-bottom: var(--space-4);
+}
+
+.qwm-mode-fieldset legend,
+.qwm-data-fieldset legend {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.qwm-mode-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-2);
+}
+
+.qwm-mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.qwm-mode-option:hover {
+  border-color: var(--color-primary);
+  background: var(--color-bg-hover);
+}
+
+.qwm-mode-option:has(input:checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.qwm-mode-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.qwm-mode-option__icon {
+  font-size: var(--text-2xl);
+  line-height: 1;
+}
+
+.qwm-mode-option__label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.qwm-data-fieldset {
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-elevated);
+}
+
+.qwm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.qwm-grid .form-field--wide {
+  grid-column: 1 / -1;
+}
+
+.form-field--check label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.qwm-time-all {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.qwm-time-all label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.quick-watermark-card__time {
+  width: 100%;
+  margin-top: var(--space-1);
+  padding: 2px var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--text-xs);
+}
+
+.quick-watermark-card__time:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
 .modal__header {
   display: flex;
   align-items: center;

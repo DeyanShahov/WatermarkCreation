@@ -14,6 +14,7 @@ import {
   formatDateTime,
   formatDecimal,
   formatDms,
+  dmsString,
 } from '../utils/coords.js';
 import { paintQrMatrix, qrPayloadForWatermark } from './qr.js';
 import { readExifData } from './exif.js';
@@ -59,6 +60,106 @@ function wrapText(context, text, maxWidth, maxLines = 3) {
 }
 
 /**
+ * Line model of the original "Image Coordinate" watermark.
+ *
+ * Empty inputs are simply skipped - nothing is invented for them:
+ *  - coordinates: both values, only latitude, only longitude, or none;
+ *  - accuracy / altitude: shown only when provided;
+ *  - brand: omitted when left empty.
+ * The meta line (`Genauigkeit … · … m ü.NN · date`) keeps its order.
+ *
+ * Exported so the quick-marking flow (and tests) can inspect the composition.
+ */
+export function classicLines(context, width, padding, coordSize, metaSize, options) {
+  const { fix = null, address = null, capturedAt = new Date(), brand = '', weather = null } = options;
+  // A whitespace-only field counts as empty too.
+  const cleanAddress = typeof address === 'string' && address.trim() !== '' ? address : null;
+  const latOk = Boolean(fix) && Number.isFinite(fix.latitude);
+  const lonOk = Boolean(fix) && Number.isFinite(fix.longitude);
+
+  const lines = [];
+
+  // Coordinates: whatever was actually entered.
+  if (latOk && lonOk) {
+    lines.push({ text: formatDecimal(fix.latitude, fix.longitude), size: coordSize, weight: '700' });
+    lines.push({ text: formatDms(fix.latitude, fix.longitude), size: metaSize, weight: '500' });
+  } else if (latOk || lonOk) {
+    const single = latOk ? fix.latitude : fix.longitude;
+    const hemisphere = latOk ? ['N', 'S'] : ['E', 'W'];
+    lines.push({ text: single.toFixed(6), size: coordSize, weight: '700' });
+    lines.push({ text: dmsString(single, hemisphere[0], hemisphere[1]), size: metaSize, weight: '500' });
+  }
+
+  const metaBits = [];
+  if (fix && Number.isFinite(fix.accuracy)) metaBits.push(`Genauigkeit ${formatAccuracy(fix.accuracy)}`);
+  if (fix && Number.isFinite(fix.altitude)) metaBits.push(formatAltitude(fix.altitude, fix.altitudeAccuracy, ' \u00fc.NN'));
+  metaBits.push(formatDateTime(capturedAt, 'de-DE'));
+  lines.push({ text: metaBits.join(' \u00b7 '), size: metaSize, weight: '500' });
+
+  if (brand) lines.push({ text: brand, size: Math.max(10, Math.round(metaSize * 0.85)), weight: '600' });
+
+  if (cleanAddress) {
+    context.font = `${metaSize}px system-ui, sans-serif`;
+    for (const line of wrapText(context, cleanAddress, width - padding * 2, 2)) {
+      lines.push({ text: line, size: metaSize, weight: '400' });
+    }
+  }
+
+  if (weather && Number.isFinite(weather.temperature) && Number.isFinite(weather.humidity)) {
+    lines.push({
+      text: `\uD83C\uDF21\uFE0F ${Math.round(weather.temperature)}\u00b0C \u00b7 \uD83D\uDCA7 ${Math.round(weather.humidity)}%`,
+      size: metaSize,
+      weight: '500',
+    });
+  }
+
+  return lines;
+}
+
+/**
+ * Big white monospace badge in a corner, optionally followed by a short text.
+ *
+ * Shared by the "number only" mode and the combined "watermark + number" mode,
+ * where the number is a separate mark pinned to the top-left corner.
+ */
+function drawCornerBadge(context, width, height, padding, { text, suffix = '', position = 'bottom-right' } = {}) {
+  if (!text) return;
+
+  const displayText = suffix ? `${text} ${suffix}` : String(text);
+  const numberFontSize = Math.max(24, Math.round(width / 20));
+  context.save();
+  context.font = `700 ${numberFontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  context.shadowColor = 'rgba(0, 0, 0, 0.7)';
+  context.shadowBlur = Math.round(numberFontSize * 0.4);
+  context.fillStyle = '#ffffff';
+  context.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+  context.lineWidth = Math.max(2, Math.round(numberFontSize / 12));
+
+  let x;
+  let y;
+  switch (position) {
+    case 'top-left':
+      x = padding; y = padding; context.textAlign = 'left'; context.textBaseline = 'top';
+      break;
+    case 'top-right':
+      x = width - padding; y = padding; context.textAlign = 'right'; context.textBaseline = 'top';
+      break;
+    case 'bottom-left':
+      x = padding; y = height - padding; context.textAlign = 'left'; context.textBaseline = 'bottom';
+      break;
+    case 'bottom-right':
+    default:
+      x = width - padding; y = height - padding; context.textAlign = 'right'; context.textBaseline = 'bottom';
+      break;
+  }
+
+  // Stroke first for contrast, then fill.
+  context.strokeText(displayText, x, y);
+  context.fillText(displayText, x, y);
+  context.restore();
+}
+
+/**
  * @param {Blob} blob JPEG/PNG source
  * @param {{
  *   fix?: object|null,
@@ -67,6 +168,8 @@ function wrapText(context, text, maxWidth, maxLines = 3) {
  *   maxEdge?: number,
  *   quality?: number,
  *   brand?: string,
+ *   look?: 'classic'|null,
+ *   cornerBadge?: { text: string|number, suffix?: string, position?: string }|null,
  *   qrMatrix?: { count: number, rows: number[][] }|null,
  *   weather?: { temperature: number, humidity: number }|null,
  *   photoNumber?: number,
@@ -95,6 +198,8 @@ export async function withWatermark(blob, options = {}) {
     maxEdge = 4096,
     quality = 0.92,
     brand = 'Watermark Creation',
+    look = null, // 'classic' reproduces the "Image Coordinate" panel exactly
+    cornerBadge = null, // { text, suffix?, position? } - separate mark over the panel
     qrMatrix = null,
     weather = null,
     photoNumber = null,
@@ -136,7 +241,8 @@ export async function withWatermark(blob, options = {}) {
   const lineHeight = Math.round(coordSize * 1.35);
 
   // Check if NUMBER ONLY mode (only photo number, no other metadata)
-  const isNumberOnlyMode = showPhotoNumber &&
+  const classic = look === 'classic';
+  const isNumberOnlyMode = !classic && showPhotoNumber &&
     !showCoordinates && !showAltitude && !showDateTime &&
     !showAddress && !showWeather && !showQrCode &&
     !showCategoryStep && !showDescription;
@@ -220,6 +326,13 @@ export async function withWatermark(blob, options = {}) {
   // Brand
   lines.push({ text: brand, size: Math.max(10, Math.round(metaSize * 0.85)), weight: '600' });
 
+  // "Image Coordinate" look: replace whatever the default composition produced
+  // with the original line order, wording and units.
+  if (classic) {
+    lines.length = 0;
+    lines.push(...classicLines(context, width, padding, coordSize, metaSize, options));
+  }
+
   if (isNumberOnlyMode) {
     // NUMBER ONLY MODE: Draw only the photo number at specified position, no panel
     const numberLine = lines.find(l => l.text.includes('Снимка'));
@@ -234,56 +347,9 @@ export async function withWatermark(blob, options = {}) {
     }
     
     if (numberText) {
-      // If includeStepMessage is enabled and stepMessage exists, append it to the number
-      let displayText = numberText;
-      if (includeStepMessage && stepMessage) {
-        displayText = `${numberText} — ${stepMessage}`;
-      }
-
-      const numberFontSize = Math.max(24, Math.round(width / 20));
-      context.save();
-      context.font = `700 ${numberFontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-      context.textBaseline = 'top';
-      context.shadowColor = 'rgba(0, 0, 0, 0.7)';
-      context.shadowBlur = Math.round(numberFontSize * 0.4);
-      context.fillStyle = '#ffffff';
-      context.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-      context.lineWidth = Math.max(2, Math.round(numberFontSize / 12));
-
-      let x, y;
-      switch (numberPosition) {
-        case 'top-left':
-          x = padding;
-          y = padding;
-          context.textAlign = 'left';
-          context.textBaseline = 'top';
-          break;
-        case 'top-right':
-          x = width - padding;
-          y = padding;
-          context.textAlign = 'right';
-          context.textBaseline = 'top';
-          break;
-        case 'bottom-left':
-          x = padding;
-          y = height - padding;
-          context.textAlign = 'left';
-          context.textBaseline = 'bottom';
-          break;
-        case 'bottom-right':
-        default:
-          x = width - padding;
-          y = height - padding;
-          context.textAlign = 'right';
-          context.textBaseline = 'bottom';
-          break;
-      }
-
-      // Draw stroke first for contrast
-      context.strokeText(displayText, x, y);
-      // Draw fill
-      context.fillText(displayText, x, y);
-      context.restore();
+      // If includeStepMessage is enabled and stepMessage exists, append it to the number.
+      const displayText = includeStepMessage && stepMessage ? `${numberText} — ${stepMessage}` : numberText;
+      drawCornerBadge(context, width, height, padding, { text: displayText, position: numberPosition });
     }
   } else {
     // FULL MODE: Draw panel with all metadata
@@ -350,6 +416,16 @@ export async function withWatermark(blob, options = {}) {
         quietZone: 2,
         light: '#ffffff',
         dark: '#04080f',
+      });
+    }
+
+    // Combined mode ("watermark + number"): the number is a separate mark and,
+    // when a watermark is present, its only place is the top-left corner.
+    if (cornerBadge && cornerBadge.text) {
+      drawCornerBadge(context, width, height, padding, {
+        text: String(cornerBadge.text),
+        suffix: cornerBadge.suffix || '',
+        position: cornerBadge.position || 'top-left',
       });
     }
   }

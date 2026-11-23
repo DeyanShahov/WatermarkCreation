@@ -77,9 +77,13 @@ export function formatAccuracy(accuracy) {
   return accuracy < 1 ? `±${accuracy.toFixed(1)} m` : `±${Math.round(accuracy)} m`;
 }
 
-export function formatAltitude(altitude, altitudeAccuracy) {
+/**
+ * Altitude in metres. `unitSuffix` lets the classic "Image Coordinate" look ask
+ * for the German "ü.NN" (über Normalnull) instead of the bare metre value.
+ */
+export function formatAltitude(altitude, altitudeAccuracy, unitSuffix = '') {
   if (!Number.isFinite(altitude)) return '—';
-  const base = `${Math.round(altitude)} m`;
+  const base = `${Math.round(altitude)} m${unitSuffix}`;
   return Number.isFinite(altitudeAccuracy)
     ? `${base} (${formatAccuracy(altitudeAccuracy)})`
     : base;

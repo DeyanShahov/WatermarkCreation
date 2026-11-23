@@ -250,14 +250,13 @@
             <section class="help-section">
               <h2>✅ Какво работи веднага</h2>
               <ul>
-                <li><strong>Бърза маркировка с номер</strong> — изберете снимки, натиснете „Обработи избраните“, изберете позиция на номера (↖ ↗ ↙ ↘) → файлът получава голяма бяла цифра в избрания ъгъл.
+                <li><strong>Бърза маркировка</strong> — изберете снимки, натиснете „Обработи избраните“ и изберете един от трите режима:
                   <ul>
-                    <li><strong>Начин на нумиране</strong> (нови опции в прозореца за бърза маркировка):
-                      <li><strong>Последователно</strong> (по подразбиране) — снимките получават номера 1, 2, 3… според реда на избор.</li>
-                      <li><strong>Групово</strong> — всички избрани снимки получават едно и също число (въвежда се в полето „Стойност за бадж/воден знак“).</li>
-                    </li>
+                    <li><strong>🔢 Само цифра в ъгъл</strong> — голяма бяла цифра в избрания ъгъл (↖ ↗ ↙ ↘), с последователно или групово нумериране.</li>
+                    <li><strong>🗺️ Само воден знак</strong> — класическият GPS панел: координати (десетични + DMS), точност, надморска височина, дата/час, адрес, температура/влажност, QR код с навигация и бранд/текст.</li>
+                    <li><strong>🔢🗺️ Воден знак + цифра</strong> — панелът плюс отделна цифра, която при панел стои само горе-ляво; може да се добави и текст след нея.</li>
                   </ul>
-                </li>
+                  Полетата са по желание — попълва се само това, което сте въвели; празните полета просто се пропускат. Часът на снимане се въвежда отделно за всяка снимка (полето във всяка карта или „Час за всички“).</li>
                 <li><strong>Бърз преглед на снимки</strong> — двойно кликнете върху тумбнейл в Галерията или в Стъпките → снимката се отваря в пълен размер за детален преглед. За затваряне: кликнете върху снимката, натиснете Escape, кликнете извън снимката или бутона „✕“.</li>
                 <li><strong>Създаване на категории и стъпки</strong> — организирайте работата си: напр. категория „Монтаж“, стъпки „Начало“, „Процес“, „Край“.</li>
                 <li><strong>Присвояване на снимки към стъпки</strong> — преместете снимки в дадена стъпка, те получават последователен номер (1, 2, 3…).</li>
@@ -267,17 +266,17 @@
 
             <section class="help-section">
               <h2>🚧 Какво ОЩЕ НЕ е готово (в разработка)</h2>
-              <p><strong>Пълен воден знак</strong> — скоро ще можете да добавите на снимката:</p>
+              <p><strong>Пълен воден знак</strong> — вече е наличен в „Бърза маркировка“ (режими „Само воден знак“ и „Воден знак + цифра“):</p>
               <ul>
-                <li>GPS координати и височина</li>
-                <li>Адрес (от координатите)</li>
-                <li>Време и дата на заснемане</li>
-                <li>Времеви условия (температура, влажност)</li>
-                <li>QR код с пълна информация</li>
-                <li>Текстово описание на стъпката</li>
-                <li><strong>AI обработка на снимки</strong> — изкуствен интелект ще анализира съдържанието на снимките за да помогне с автоматичното разпределение: кое къде принадлежи, разпознаване на обекти/ситуации, четене на съществуващи водни знаци и извличане на мета-информация (EXIF, GPS, дата/час), както и помощ за хронологично подреждане на снимките.</li>
+                <li>GPS координати (десетични + DMS) — частично попълнени: само въведеното</li>
+                <li>Точност и надморска височина — само ако са въведени</li>
+                <li>Дата и час на снимане (часът се задава отделно за всяка снимка)</li>
+                <li>Адрес, температура и влажност</li>
+                <li>QR код с навигация до координатите (Google Maps)</li>
+                <li>Бранд/текст в панела</li>
+                <li><strong>AI обработка на снимки</strong> — <em>в разработка:</em> изкуствен интелект ще анализира съдържанието на снимките за да помогне с автоматичното разпределение: кое къде принадлежи, разпознаване на обекти/ситуации, четене на съществуващи водни знаци и извличане на мета-информация (EXIF, GPS, дата/час), както и помощ за хронологично подреждане на снимките.</li>
               </ul>
-              <p>Засега работят: <strong>номер в ъгъл</strong>, <strong>бърз преглед на снимки</strong> и <strong>групово/последователно нумиране</strong>.</p>
+              <p>Засега работят: <strong>бърза маркировка в три режима</strong>, <strong>бърз преглед на снимки</strong> и <strong>групово/последователно нумериране</strong>.</p>
             </section>
 
             <section class="help-section">
@@ -299,18 +298,17 @@
               <p>В <strong>Галерията</strong> или в <strong>Стъпките</strong> — <strong>двойно кликнете</strong> върху тумбнейл на снимка → отваря се в пълен размер за детален преглед.  
               За затваряне: <strong>кликнете върху голямата снимка</strong>, натиснете <strong>Escape</strong>, кликнете <strong>хоризонтално извън снимката</strong> или бутона <strong>„✕“</strong> в горния десен ъгъл.</p>
 
-              <h3>6. Бърза маркировка с номер</h3>
-              <p>В <strong>Галерията</strong> отметнете снимките (чекбокс горе-ляво). Натиснете <strong>„Обработи избраните“</strong>.  
-              Изберете позиция: <strong>↖ Горе-ляво</strong>, <strong>↗ Горе-дясно</strong>, <strong>↙ Долу-ляво</strong>, <strong>↘ Долу-дясно</strong>.  
-              <strong>Начин на нумиране</strong> (нови опции):
+              <h3>6. Бърза маркировка</h3>
+              <p>В <strong>Галерията</strong> отметнете снимките (чекбокс горе-ляво) и натиснете <strong>„Обработи избраните“</strong>. В прозореца „Бърза маркировка“ изберете тип обработка:</p>
               <ul>
-                <li><strong>Последователно</strong> (по подразбиране) — снимките получават номера 1, 2, 3… според реда на избор.</li>
-                <li><strong>Групово</strong> — всички избрани снимки получават едно и също число (въвежда се в полето „Стойност за бадж/воден знак“).</li>
+                <li><strong>🔢 Само цифра в ъгъл</strong> — изберете позиция (<strong>↖ Горе-ляво</strong>, <strong>↗ Горе-дясно</strong>, <strong>↙ Долу-ляво</strong>, <strong>↘ Долу-дясно</strong>) и начин на нумериране: <strong>Последователно</strong> (1, 2, 3… по ред на избор) или <strong>Групово</strong> (една стойност за всички, въведена в „Стойност за бадж/воден знак“).</li>
+                <li><strong>🗺️ Само воден знак</strong> — попълнете данните за панела: координати (ширина/дължина — DMS се изчислява автоматично), точност (m), надморска височина (m), дата, адрес, температура (°C), влажност (%) и бранд/текст. QR кодът с навигация до координатите е по желание. <em>Празните полета се пропускат — в панела попада само това, което сте въвели.</em></li>
+                <li><strong>🔢🗺️ Воден знак + цифра</strong> — същите полета плюс начин на нумериране и незадължителен <strong>текст след цифрата</strong>. Цифрата е отделна маркировка и стои само горе-ляво.</li>
               </ul>
-              Натиснете <strong>„Приложи“</strong>. Снимките се обработват и отиват в паметта за изтегляне.</p>
+              <p>Часът на снимането се въвежда отделно за всяка снимка — полето във всяка карта или наведнъж с <strong>„Час на снимане за всички“</strong>. Натиснете <strong>„Приложи“</strong>. Снимките се обработват и отиват в паметта за изтегляне.</p>
 
               <h3>7. Изтеглете резултатите</h3>
-              <p>След обработка натиснете <strong>„Изтегли всички“</strong>. Файловете се изтеглят с име като <code>IMG_20241116_143022_#1.jpg</code> (номера в края показва поредния номер).</p>
+              <p>След обработка натиснете <strong>„Изтегли всички“</strong>. Файловете се изтеглят с име като <code>IMG_20241116_143022_#1.jpg</code> (номера в края показва поредния номер). При прилаган пълен воден знак името включва датата и координатите, напр. <code>IMG_20241116_143022_42.697700_23.321900.jpg</code>.</p>
             </section>
 
             <section class="help-section">
@@ -508,11 +506,32 @@
         <div class="modal__backdrop" tabindex="-1"></div>
         <div class="modal__content">
           <header class="modal__header">
-            <h2 id="quick-watermark-title">Бърза маркировка с номер</h2>
+            <h2 id="quick-watermark-title">Бърза маркировка</h2>
             <button class="modal__close" aria-label="Затвори">✕</button>
           </header>
           <div class="modal__body">
-            <fieldset class="quick-watermark-position-fieldset">
+            <fieldset class="qwm-mode-fieldset">
+              <legend>Тип обработка</legend>
+              <div class="qwm-mode-options" role="radiogroup" aria-label="Изберете тип обработка">
+                <label class="qwm-mode-option">
+                  <input type="radio" name="quick-watermark-kind" value="number" checked />
+                  <span class="qwm-mode-option__icon">🔢</span>
+                  <span class="qwm-mode-option__label">Само цифра в ъгъл</span>
+                </label>
+                <label class="qwm-mode-option">
+                  <input type="radio" name="quick-watermark-kind" value="classic" />
+                  <span class="qwm-mode-option__icon">🗺️</span>
+                  <span class="qwm-mode-option__label">Само воден знак</span>
+                </label>
+                <label class="qwm-mode-option">
+                  <input type="radio" name="quick-watermark-kind" value="both" />
+                  <span class="qwm-mode-option__icon">🔢🗺️</span>
+                  <span class="qwm-mode-option__label">Воден знак + цифра</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset id="quick-watermark-position-fieldset" class="quick-watermark-position-fieldset">
               <legend>Позиция на номера</legend>
               <div id="quick-watermark-position" class="quick-watermark-position-options" role="radiogroup" aria-label="Изберете позиция на номера">
                 <label class="position-option">
@@ -538,7 +557,7 @@
               </div>
             </fieldset>
 
-            <fieldset class="quick-watermark-numbering-fieldset">
+            <fieldset id="quick-watermark-numbering-fieldset" class="quick-watermark-numbering-fieldset">
               <legend>Начин на нумиране</legend>
               <div id="quick-watermark-numbering" class="quick-watermark-numbering-options" role="radiogroup" aria-label="Изберете начин на нумиране">
                 <label class="numbering-option">
@@ -557,10 +576,64 @@
                 <input type="text" id="quick-watermark-group-value" name="quickWatermarkGroupValue" 
                        placeholder="напр. 1, А, 5" maxlength="10" inputmode="text" />
               </div>
+              <div id="qwm-badge-suffix-wrap" class="quick-watermark-group-input" hidden>
+                <label for="qw-badge-suffix">Текст след цифрата (само режим „Воден знак + цифра“)</label>
+                <input type="text" id="qw-badge-suffix" maxlength="24" placeholder="напр. етаж 2, А, фаза Б ..." />
+              </div>
+            </fieldset>
+
+            <fieldset id="qwm-data-fieldset" class="qwm-data-fieldset" hidden>
+              <legend>Данни за класическия воден знак</legend>
+              <div class="qwm-grid">
+                <div class="form-field">
+                  <label for="qw-lat">Координати — ширина (lat)</label>
+                  <input type="number" id="qw-lat" step="any" placeholder="42.6977" inputmode="decimal" />
+                </div>
+                <div class="form-field">
+                  <label for="qw-lon">Координати — дължина (lon)</label>
+                  <input type="number" id="qw-lon" step="any" placeholder="23.3219" inputmode="decimal" />
+                </div>
+                <div class="form-field">
+                  <label for="qw-accuracy">Точност (m)</label>
+                  <input type="number" id="qw-accuracy" step="any" min="0" placeholder="напр. 5" inputmode="decimal" />
+                </div>
+                <div class="form-field">
+                  <label for="qw-altitude">Надморска височина (m)</label>
+                  <input type="number" id="qw-altitude" step="any" placeholder="напр. 587" inputmode="decimal" />
+                </div>
+                <div class="form-field">
+                  <label for="qw-date">Дата на снимане</label>
+                  <input type="date" id="qw-date" />
+                </div>
+                <div class="form-field">
+                  <label for="qw-brand">Бранд / текст в панела</label>
+                  <input type="text" id="qw-brand" value="Image Coordinate" maxlength="40" />
+                </div>
+                <div class="form-field form-field--wide">
+                  <label for="qw-address">Адрес</label>
+                  <textarea id="qw-address" rows="2" maxlength="300" placeholder="ул. …, град …"></textarea>
+                </div>
+                <div class="form-field">
+                  <label for="qw-temperature">Температура (°C)</label>
+                  <input type="number" id="qw-temperature" step="0.1" placeholder="напр. 19" inputmode="decimal" />
+                </div>
+                <div class="form-field">
+                  <label for="qw-humidity">Влажност (%)</label>
+                  <input type="number" id="qw-humidity" step="0.1" min="0" max="100" placeholder="напр. 62" inputmode="decimal" />
+                </div>
+                <div class="form-field form-field--check form-field--wide">
+                  <label><input type="checkbox" id="qw-qr" checked /> QR код с навигация до координатите (Google Maps)</label>
+                </div>
+              </div>
+              <p class="form-hint">DMS координатите се изчисляват автоматично от lat/lon. Ако координатите липсват, панелът показва „Keine GPS-Koordinaten“. Часът на снимане се въвежда отделно за всяка снимка по-долу.</p>
             </fieldset>
 
             <div class="quick-watermark-preview">
               <p id="quick-watermark-count" class="quick-watermark-count">Избрани: 0 снимки</p>
+              <div id="qwm-time-all-wrap" class="qwm-time-all" hidden>
+                <label for="qw-time-all">Час на снимане за всички:</label>
+                <input type="time" id="qw-time-all" value="12:00" />
+              </div>
               <div id="quick-watermark-grid" class="quick-watermark-grid" role="list" aria-label="Снимки за бърза маркировка"></div>
             </div>
           </div>

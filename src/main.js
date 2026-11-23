@@ -1111,91 +1111,207 @@ async function handleDownloadAll() {
 
 /* ------------------------------------------------------------------ Quick Watermark */
 
+/**
+ * Coerce a form value to a finite number, otherwise null.
+ *
+ * Note: `Number(null) === 0`, so null/undefined/empty must be rejected
+ * explicitly - otherwise every untouched field would become 0.
+ */
+function finiteOrNull(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Shared tail of both quick-marking modes. */
+function finishQuickProcessing(results, processedBlobs, total) {
+  setState({ processedBlobs });
+  ui.updateProcessProgress({ current: total, total, status: 'Завършено' });
+  ui.finishProcessing(results);
+  ui.showToast(`Обработка: ${results.success} успешни, ${results.errors} грешки`, { type: 'success' });
+  setState({ isProcessing: false });
+}
+
+/** Corner badge only - the original quick-marking behaviour. */
+async function applyNumberBadge(photoIds, position, { numberingMode = 'sequential', groupValue = '' } = {}) {
+  const { photos, watermarkSettings } = getState();
+  setState({ isProcessing: true });
+  ui.showProcessModal();
+
+  const results = { success: 0, errors: 0 };
+  const processedBlobs = {};
+  const selectedPhotos = photoIds.map((id) => photos.find((p) => p.id === id)).filter(Boolean);
+
+  for (let i = 0; i < selectedPhotos.length; i++) {
+    const photo = selectedPhotos[i];
+
+    let photoNumber;
+    switch (numberingMode) {
+      case 'group':
+        photoNumber = groupValue || 1;
+        break;
+      default:
+        photoNumber = i + 1;
+    }
+
+    ui.updateProcessProgress({
+      current: i + 1,
+      total: selectedPhotos.length,
+      status: 'Маркиране...',
+      currentFile: `#${photoNumber} ${photo.filename}`,
+    });
+
+    try {
+      const processedBlob = await watermark.withWatermark(photo.file, {
+        ...watermarkSettings,
+        // Override to number-only mode
+        watermarkMode: 'numberOnly',
+        numberPosition: position,
+        numberFormat: 'number', // Just the number: "1", "2", "3"
+        showCoordinates: false,
+        showAltitude: false,
+        showDateTime: false,
+        showAddress: false,
+        showWeather: false,
+        showQrCode: false,
+        showCategoryStep: false,
+        showDescription: false,
+        photoNumber,
+        totalPhotos: selectedPhotos.length,
+      });
+
+      const baseName = makePhotoFilename(new Date(), null, null, 'jpg').replace('.jpg', '');
+      const filename = `${baseName}_#${photoNumber}.jpg`;
+      processedBlobs[photo.id] = { blob: processedBlob.blob, filename };
+
+      results.success++;
+      ui.addProcessResult(photo, true);
+    } catch (error) {
+      console.error('Quick watermark error:', error);
+      ui.addProcessResult(photo, false, error.message);
+      results.errors++;
+    }
+  }
+
+  finishQuickProcessing(results, processedBlobs, selectedPhotos.length);
+}
+
+/**
+ * Classic "Image Coordinate" panel: one shared dataset plus a per-photo hour.
+ * The panel wording/order comes from `look: 'classic'` in watermark.js.
+ *
+ * `badge` is optional; when present the number is drawn as a separate mark in
+ * the top-left corner (the only place it may occupy next to a watermark).
+ */
+async function applyClassicPanel(photoIds, { shared = {}, times = {}, badge = null } = {}) {
+  const { photos, watermarkSettings } = getState();
+  setState({ isProcessing: true });
+  ui.showProcessModal();
+
+  const results = { success: 0, errors: 0 };
+  const processedBlobs = {};
+  const usedNames = new Set();
+  const selectedPhotos = photoIds.map((id) => photos.find((p) => p.id === id)).filter(Boolean);
+
+  for (let i = 0; i < selectedPhotos.length; i++) {
+    const photo = selectedPhotos[i];
+
+    const time = times[photo.id] || '12:00';
+    const capturedAt = shared.date ? new Date(`${shared.date}T${time}`) : new Date();
+
+    // Partial coordinates are allowed: only what was typed ends up on the photo.
+    const latitude = finiteOrNull(shared.latitude);
+    const longitude = finiteOrNull(shared.longitude);
+    const fix =
+      latitude !== null || longitude !== null
+        ? { latitude, longitude, accuracy: finiteOrNull(shared.accuracy), altitude: finiteOrNull(shared.altitude) }
+        : null;
+
+    const temperature = finiteOrNull(shared.temperature);
+    const humidity = finiteOrNull(shared.humidity);
+    const weather = temperature !== null && humidity !== null ? { temperature, humidity } : null;
+
+    // Separate number mark ("watermark + number" mode): sequential or group value.
+    let badgeText = null;
+    if (badge) {
+      badgeText = badge.numberingMode === 'group' ? badge.groupValue || '1' : String(i + 1);
+    }
+
+    ui.updateProcessProgress({
+      current: i + 1,
+      total: selectedPhotos.length,
+      status: 'Воден знак...',
+      currentFile: `${capturedAt.toLocaleTimeString('bg-BG')} ${photo.filename}`,
+    });
+
+    try {
+      let qrMatrix = null;
+      // The navigation QR needs a full coordinate pair; a single value is skipped.
+      if (shared.qr && fix && Number.isFinite(fix.latitude) && Number.isFinite(fix.longitude)) {
+        qrMatrix = await qr.createQrMatrix(qr.qrPayloadFor(fix.latitude, fix.longitude));
+      }
+
+      const processed = await watermark.withWatermark(photo.file, {
+        look: 'classic',
+        fix,
+        address: shared.address,
+        capturedAt,
+        weather,
+        brand: shared.brand || '',
+        qrMatrix,
+        showQrCode: Boolean(shared.qr && qrMatrix),
+        cornerBadge: badgeText
+          ? { text: badgeText, suffix: badge.suffix || '', position: 'top-left' }
+          : null,
+        maxEdge: watermarkSettings.maxEdge ?? 4096,
+        quality: watermarkSettings.quality ?? 0.92,
+      });
+
+      const baseName = makePhotoFilename(
+        capturedAt,
+        fix?.latitude ?? null,
+        fix?.longitude ?? null,
+        'jpg',
+      ).replace(/\.jpg$/, '') + (badgeText ? `_#${badgeText}` : '');
+      let filename = `${baseName}.jpg`;
+      let counter = 1;
+      while (usedNames.has(filename.toLowerCase())) {
+        filename = `${baseName}_${++counter}.jpg`;
+      }
+      usedNames.add(filename.toLowerCase());
+
+      processedBlobs[photo.id] = { blob: processed.blob, filename };
+
+      results.success++;
+      ui.addProcessResult(photo, true);
+    } catch (error) {
+      console.error('Classic watermark error:', error);
+      ui.addProcessResult(photo, false, error.message);
+      results.errors++;
+    }
+  }
+
+  finishQuickProcessing(results, processedBlobs, selectedPhotos.length);
+}
+
 function handleQuickWatermark() {
   const { photos, selectedPhotoIds, watermarkSettings } = getState();
   if (selectedPhotoIds.length === 0) return;
 
-  // Get selected photos in selection order
-  const selectedPhotos = selectedPhotoIds.map(id => photos.find(p => p.id === id)).filter(Boolean);
   const currentPosition = watermarkSettings.numberPosition || 'bottom-right';
 
   ui.showQuickWatermarkModal({
     photos,
     selectedIds: selectedPhotoIds,
     currentPosition,
-    onApply: async (photoIds, position, numberingOptions = {}) => {
-      // Real implementation: apply number-only watermark to selected photos
-      const { numberingMode = 'sequential', groupValue = '' } = numberingOptions;
-      console.log('🔵 [Quick Watermark] Apply clicked:', { photoIds, position, count: photoIds.length, numberingMode, groupValue });
-      
-      setState({ isProcessing: true });
-      ui.showProcessModal();
-      const results = { success: 0, errors: 0 };
-      const processedBlobs = {};
-
-      // Get selected photos in selection order (photoIds is already in selection order from the modal)
-      const selectedPhotos = photoIds.map(id => photos.find(p => p.id === id)).filter(Boolean);
-
-      for (let i = 0; i < selectedPhotos.length; i++) {
-        const photo = selectedPhotos[i];
-        
-        // Determine photo number based on numbering mode
-        let photoNumber;
-        switch (numberingMode) {
-          case 'sequential':
-            photoNumber = i + 1; // 1-based sequential number
-            break;
-          case 'group':
-            photoNumber = groupValue || 1; // Same value for all photos
-            break;
-          default:
-            photoNumber = i + 1;
-        }
-        
-        ui.updateProcessProgress({
-          current: i + 1,
-          total: selectedPhotos.length,
-          status: 'Маркиране...',
-          currentFile: `#${photoNumber} ${photo.filename}`
-        });
-
-        try {
-          const processedBlob = await watermark.withWatermark(photo.file, {
-            ...watermarkSettings,
-            // Override to number-only mode
-            watermarkMode: 'numberOnly',
-            numberPosition: position,
-            numberFormat: 'number', // Just the number: "1", "2", "3"
-            showCoordinates: false,
-            showAltitude: false,
-            showDateTime: false,
-            showAddress: false,
-            showWeather: false,
-            showQrCode: false,
-            showCategoryStep: false,
-            showDescription: false,
-            photoNumber,
-            totalPhotos: selectedPhotos.length,
-          });
-
-          const baseName = makePhotoFilename(new Date(), null, null, 'jpg').replace('.jpg', '');
-          const filename = `${baseName}_#${photoNumber}.jpg`;
-          processedBlobs[photo.id] = { blob: processedBlob.blob, filename };
-
-          results.success++;
-          ui.addProcessResult(photo, true);
-        } catch (error) {
-          console.error('Quick watermark error:', error);
-          ui.addProcessResult(photo, false, error.message);
-          results.errors++;
-        }
+    onApply: async (photoIds, position, options = {}) => {
+      console.log('🔵 [Quick Watermark] Apply clicked:', { photoIds, position, count: photoIds.length, options });
+      if (options.kind === 'number') {
+        await applyNumberBadge(photoIds, position, options);
+      } else {
+        // 'classic' (panel only) and 'both' (panel + separate top-left number)
+        await applyClassicPanel(photoIds, options);
       }
-
-      setState({ processedBlobs });
-      ui.updateProcessProgress({ current: selectedPhotos.length, total: selectedPhotos.length, status: 'Завършено' });
-      ui.finishProcessing(results);
-      ui.showToast(`Бърза маркировка: ${results.success} успешни, ${results.errors} грешки`, { type: 'success' });
-      setState({ isProcessing: false });
     },
     onCancel: () => {
       console.log('🔵 [Quick Watermark] Cancelled');
