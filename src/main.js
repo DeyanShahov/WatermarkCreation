@@ -28,7 +28,7 @@ window.togglePasswordVisibility = ui.togglePasswordVisibility;
 let refs;
 
 // App version - update this when making changes
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 const DEFAULT_WATERMARK_SETTINGS = {
   showCoordinates: true,
