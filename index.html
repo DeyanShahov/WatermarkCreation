@@ -622,13 +622,17 @@
             </fieldset>
 
             <div class="quick-watermark-preview">
-              <p id="quick-watermark-count" class="quick-watermark-count">Избрани: 0 снимки</p>
-              <div id="qwm-time-all-wrap" class="qwm-time-all" hidden>
-                <label for="qw-time-all">Час на снимане за всички:</label>
-                <input type="time" id="qw-time-all" value="12:00" />
-              </div>
-              <div id="quick-watermark-grid" class="quick-watermark-grid" role="list" aria-label="Снимки за бърза маркировка"></div>
-            </div>
+                          <p id="quick-watermark-count" class="quick-watermark-count">Избрани: 0 снимки</p>
+                          <div id="qwm-time-all-wrap" class="qwm-time-all" hidden>
+                            <label for="qw-time-all">Час на снимане за всички:</label>
+                            <input type="time" id="qw-time-all" value="12:00" />
+                            <label class="qwm-time-step-wrap" style="margin-left: 1rem;">
+                              <input type="checkbox" id="qw-time-step-enable" /> Автоматично увеличаване на минутите
+                              <input type="number" id="qw-time-step" min="1" max="60" value="1" style="width: 50px; margin-left: 0.5rem;" placeholder="мин." title="Стъпка в минути за всяка следваща снимка" />
+                            </label>
+                          </div>
+                          <div id="quick-watermark-grid" class="quick-watermark-grid" role="list" aria-label="Снимки за бърза маркировка"></div>
+                        </div>
           </div>
           <div class="form-actions">
             <button type="button" id="btn-cancel-quick-watermark" class="btn btn--ghost">Отказ</button>

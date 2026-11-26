@@ -74,8 +74,8 @@ export function createRefs() {
     'quick-watermark-position-fieldset', 'quick-watermark-numbering-fieldset',
     'qwm-data-fieldset', 'qw-lat', 'qw-lon', 'qw-accuracy', 'qw-altitude',
     'qw-date', 'qw-brand', 'qw-address', 'qw-temperature', 'qw-humidity', 'qw-qr',
-    'qwm-time-all-wrap', 'qw-time-all',
-    'qwm-badge-suffix-wrap', 'qw-badge-suffix',
+    'qwm-time-all-wrap', 'qw-time-all', 'qw-time-step-enable', 'qw-time-step',
+        'qwm-badge-suffix-wrap', 'qw-badge-suffix',
     // Toasts
     'toast-container',
     // Image Preview Modal
@@ -1031,9 +1031,11 @@ export function showQuickWatermarkModal({
   const numberingFieldsetEl = ref('quick-watermark-numbering-fieldset');
   const dataFieldsetEl = ref('qwm-data-fieldset');
   const timeAllWrapEl = ref('qwm-time-all-wrap');
-  const timeAllEl = ref('qw-time-all');
-  const dateEl = ref('qw-date');
-  const badgeSuffixWrapEl = ref('qwm-badge-suffix-wrap');
+    const timeAllEl = ref('qw-time-all');
+    const timeStepEnableEl = ref('qw-time-step-enable');
+    const timeStepEl = ref('qw-time-step');
+    const dateEl = ref('qw-date');
+    const badgeSuffixWrapEl = ref('qwm-badge-suffix-wrap');
 
   if (!modal || !grid) return;
 
@@ -1129,26 +1131,58 @@ export function showQuickWatermarkModal({
       return;
     }
     if (target.id === 'qw-time-all') {
-      const value = target.value || '12:00';
-      grid.querySelectorAll('.quick-watermark-card__time').forEach((input) => {
-        input.value = value;
-        times.set(input.dataset.id, value);
-      });
-      return;
-    }
+          const value = target.value || '12:00';
+          const stepEnabled = timeStepEnableEl?.checked ?? false;
+          const stepMinutes = Math.max(1, Math.min(60, parseInt(timeStepEl?.value, 10) || 1));
+          const cards = grid.querySelectorAll('.quick-watermark-card__time');
+          cards.forEach((input, index) => {
+            let cardTime = value;
+            if (stepEnabled && index > 0) {
+              const [hh, mm] = value.split(':').map(Number);
+              const totalMinutes = hh * 60 + mm + stepMinutes * index;
+              const newHh = Math.floor(totalMinutes / 60) % 24;
+              const newMm = totalMinutes % 60;
+              cardTime = `${String(newHh).padStart(2, '0')}:${String(newMm).padStart(2, '0')}`;
+            }
+            input.value = cardTime;
+            times.set(input.dataset.id, cardTime);
+          });
+          return;
+        }
     if (target.classList.contains('quick-watermark-card__time')) {
-      times.set(target.dataset.id, target.value || '12:00');
-    }
-  };
+          times.set(target.dataset.id, target.value || '12:00');
+        }
+        if (target.id === 'qw-time-step-enable' || target.id === 'qw-time-step') {
+          // Re-apply step logic when checkbox or step value changes
+          const timeAllValue = timeAllEl?.value || '12:00';
+          const stepEnabled = timeStepEnableEl?.checked ?? false;
+          const stepMinutes = Math.max(1, Math.min(60, parseInt(timeStepEl?.value, 10) || 1));
+          const cards = grid.querySelectorAll('.quick-watermark-card__time');
+          cards.forEach((input, index) => {
+            let cardTime = timeAllValue;
+            if (stepEnabled && index > 0) {
+              const [hh, mm] = timeAllValue.split(':').map(Number);
+              const totalMinutes = hh * 60 + mm + stepMinutes * index;
+              const newHh = Math.floor(totalMinutes / 60) % 24;
+              const newMm = totalMinutes % 60;
+              cardTime = `${String(newHh).padStart(2, '0')}:${String(newMm).padStart(2, '0')}`;
+            }
+            input.value = cardTime;
+            times.set(input.dataset.id, cardTime);
+          });
+        }
+      };
   const handleGroupInput = () => handleGroupValueChange();
 
-  modal.addEventListener('change', handleModalChange);
-  if (groupValueEl) groupValueEl.addEventListener('input', handleGroupInput);
+    modal.addEventListener('change', handleModalChange);
+    if (groupValueEl) groupValueEl.addEventListener('input', handleGroupInput);
+    if (timeStepEl) timeStepEl.addEventListener('input', handleModalChange);
 
-  releaseQuickWatermarkListeners = () => {
-    modal.removeEventListener('change', handleModalChange);
-    if (groupValueEl) groupValueEl.removeEventListener('input', handleGroupInput);
-  };
+    releaseQuickWatermarkListeners = () => {
+      modal.removeEventListener('change', handleModalChange);
+      if (groupValueEl) groupValueEl.removeEventListener('input', handleGroupInput);
+      if (timeStepEl) timeStepEl.removeEventListener('input', handleModalChange);
+    };
 
   // Store card number elements for easy updates
   const cardNumberElements = [];
