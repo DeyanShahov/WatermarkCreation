@@ -89,7 +89,18 @@ async function loadSavedData() {
     }
     
     setState({ categories });
-    
+
+    // Remove AI settings left behind by categories that no longer exist
+    // (archive imports generate new category IDs, which orphans old keys).
+    try {
+      const removedOrphans = await storage.cleanupOrphanCategoryAISettings();
+      if (removedOrphans > 0) {
+        console.log(`🧹 [loadSavedData] Removed ${removedOrphans} orphaned AI setting(s)`);
+      }
+    } catch (error) {
+      console.warn('🔵 [loadSavedData] Orphan AI settings cleanup failed:', error);
+    }
+
     const savedSettings = await storage.getSetting('watermarkSettings');
     if (savedSettings) {
       setState({ watermarkSettings: { ...DEFAULT_WATERMARK_SETTINGS, ...savedSettings } });
@@ -335,12 +346,16 @@ async function handleDeleteCategory() {
     });
   }
   
-  // Delete AI settings for this category
-  const { deleteAISettings } = await import('./core/ai.js');
-  await deleteAISettings(currentCategory.id);
-  
-  await storage.deleteCategory(currentCategory.id);
-  
+  // Delete the category. This also removes its AI settings (API key / prompt)
+  // from the `category-prompts` store - see storage.deleteCategory().
+  try {
+    await storage.deleteCategory(currentCategory.id);
+  } catch (error) {
+    console.error('🔴 [handleDeleteCategory] Failed to delete category:', error);
+    ui.showToast(`Грешка при изтриване на категорията: ${error.message}`, { type: 'error' });
+    return;
+  }
+
   // Update local state - clear assignments for affected photos
   const updatedPhotos = photos.map(p => 
     p.categoryId === currentCategory.id ? { ...p, categoryId: null, stepId: null, position: null } : p

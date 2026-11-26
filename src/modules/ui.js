@@ -1797,7 +1797,7 @@ function setupEnrichmentEvents({ onSave, onProcess, onCancel, categoryId }) {
       }
     } catch (error) {
       console.error('AI validation error:', error);
-      showToast('Грешка при AI валидация.', { type: 'error' });
+      showToast(`Грешка при AI валидация: ${error.message}`, { type: 'error' });
     } finally {
       setBusy(validateBtn, false);
     }
@@ -1904,25 +1904,36 @@ async function runGeocodePreview(address) {
       throw new Error('Неуспешно геокодиране');
     }
 
-    // Update preview
+    // Update preview: full address + place name (city only)
     setText(ref('preview-latlon-decimal'), `${location.lat.toFixed(6)}, ${location.lon.toFixed(6)}`);
     setText(ref('preview-latlon-dms'), `${toDMS(location.lat, true)}, ${toDMS(location.lon, false)}`);
     setText(ref('preview-address'), location.address || '—');
     setText(ref('preview-displayname'), location.displayName || '—');
     setText(ref('preview-confidence'), `${Math.round(location.confidence * 100)}%`);
-    
-    // Store validated address
-    if (location.address) {
+
+    // Store validated address - but never let a lower-precision result
+    // (city-only fallback) overwrite an already validated street address.
+    if (shouldApplyGeocodeAddress(getValue('enrichment-address-validated'), location)) {
       setValue('enrichment-address-validated', location.address);
     }
-    
+
+    // Make a degraded geocode visible instead of silently degrading the data.
+    const isCityOnly = location.precision === 'city';
+
     // Trigger weather preview if date is set
     const date = getValue('enrichment-date');
     const time = getValue('enrichment-time');
     if (date) {
       await runWeatherPreview(location.address || address, date, time);
+      if (isCityOnly && status) {
+        setText(status, '⚠️ Геокодирането е на ниво град (Nominatim proxy не е наличен). Пълният адрес се запазва от въведените данни.');
+      }
     } else {
-      if (status) setText(status, 'Координати са намерени. Изберете дата за да се извлечат метео данни.');
+      if (status) {
+        setText(status, isCityOnly
+          ? '⚠️ Координати са намерени на ниво град (Nominatim proxy не е наличен). Пълният адрес се запазва от въведените данни.'
+          : 'Координати са намерени. Изберете дата за да се извлечат метео данни.');
+      }
       show(ref('btn-refresh-weather'), true);
     }
   } catch (error) {
@@ -1932,6 +1943,18 @@ async function runGeocodePreview(address) {
     setText(ref('preview-address'), 'Грешка при геокодиране');
     if (status) setText(status, `Грешка: ${error.message}`);
   }
+}
+
+/**
+ * Decide whether a geocode result may replace the already validated address.
+ * A city-level fallback must not erase a street-level / AI-validated value.
+ */
+export function shouldApplyGeocodeAddress(currentAddress, location) {
+  const next = location?.address;
+  if (!next) return false;
+  if (!currentAddress) return true;
+  // 'exact' | 'street' -> ok to replace; 'city' -> keep the better value
+  return (location.precision ?? 'street') !== 'city';
 }
 
 /** Run weather preview for location + date + time. */
@@ -1979,9 +2002,9 @@ async function loadAIForm(categoryId = null) {
   // Load user global settings (endpoint, model) and category-specific settings (apiKey, prompt) in parallel
   const [userSettings, categorySettings, defaults, effectiveSettings] = await Promise.all([
     loadUserSettings(),
-    categoryId ? loadCategoryAISettings(categoryId) : Promise.resolve({ apiKey: '', prompt: BUILTIN_DEFAULTS.prompt, hasSettings: false }),
+    categoryId ? loadCategoryAISettings(categoryId) : Promise.resolve({ apiKey: '', prompt: '', hasSettings: false }),
     getGlobalDefaults(),
-    categoryId ? getEffectiveSettings(categoryId) : Promise.resolve({ hasCategorySettings: false })
+    categoryId ? getEffectiveSettings(categoryId) : Promise.resolve({ hasCategorySettings: false, keySource: 'none' })
   ]);
   
   // Set form values
@@ -2006,6 +2029,18 @@ async function loadAIForm(categoryId = null) {
       feedbackEl.className = 'form-hint info';
     }
     feedbackEl.hidden = false;
+  }
+
+  // Show which route will be used for this category (browser key vs Netlify proxy)
+  const routeBadge = document.getElementById('ai-route-badge');
+  if (routeBadge) {
+    const model = effectiveSettings.model || '';
+    const usesBrowserKey = effectiveSettings.keySource === 'browser';
+    routeBadge.className = `route-badge ${usesBrowserKey ? 'route-badge--direct' : 'route-badge--proxy'}`;
+    routeBadge.textContent = usesBrowserKey
+      ? `🔑 Локален ключ → директно към Groq (модел: ${model})`
+      : `🌐 Няма ключ в браузъра → Netlify proxy със сървърен ключ (модел: ${model})`;
+    routeBadge.hidden = false;
   }
 }
 
@@ -2044,7 +2079,10 @@ async function testAIConnection(categoryId = null) {
     const result = await testAI(categoryId);
     
     show(resultDiv, true);
-    output.textContent = `Тестов адрес: ${result.testAddress}\n\nКоригиран: ${result.corrected}\n\n✅ AI връзката работи коректно!\nМодел: ${result.settingsUsed.model}\nEndpoint: ${result.settingsUsed.endpoint}`;
+    const routeLabel = result.settingsUsed.route === 'direct'
+      ? '🔑 Локален ключ → директно към Groq'
+      : '🌐 Netlify proxy (сървърен ключ)';
+    output.textContent = `Тестов адрес: ${result.testAddress}\n\nКоригиран: ${result.corrected}\n\n✅ AI връзката работи коректно!\nМаршрут: ${routeLabel}\nМодел: ${result.settingsUsed.model}\nEndpoint: ${result.settingsUsed.endpoint}`;
     
     showToast('AI тест успешен!', { type: 'success' });
   } catch (error) {

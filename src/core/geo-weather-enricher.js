@@ -71,19 +71,37 @@ export function parseCoordinate(str) {
   return null;
 }
 
-/** Format Nominatim result to readable address string */
+/** Format Nominatim result to a readable "Street, PLZ City, Country" string. */
 export function formatAddress(nominatimResult) {
-  if (!nominatimResult || !nominatimResult.address) return nominatimResult?.display_name ?? '';
+  if (!nominatimResult) return '';
   const addr = nominatimResult.address;
+  if (!addr || typeof addr !== 'object') return nominatimResult.display_name ?? '';
+
   const parts = [];
-  if (addr.road) parts.push(addr.road);
-  if (addr.house_number) parts[parts.length - 1] += ` ${addr.house_number}`;
-  if (addr.suburb) parts.push(addr.suburb);
-  if (addr.city || addr.town || addr.village) parts.push(addr.city ?? addr.town ?? addr.village);
-  if (addr.state) parts.push(addr.state);
-  if (addr.postcode) parts.push(addr.postcode);
+
+  // Street line: "Bäckenäckerstraße 5"
+  const street = [addr.road, addr.house_number].filter(Boolean).join(' ').trim();
+  if (street) parts.push(street);
+
+  // Place line: "91077 Neunkirchen am Brand"
+  const city = addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.hamlet ?? null;
+  const place = [addr.postcode, city].filter(Boolean).join(' ').trim();
+  if (place) parts.push(place);
+  else if (addr.suburb) parts.push(addr.suburb);
+  else if (addr.state) parts.push(addr.state);
+
   if (addr.country) parts.push(addr.country);
+
   return parts.join(', ') || nominatimResult.display_name || '';
+}
+
+/** Extract only the place/city name from a Nominatim result. */
+export function formatPlaceName(nominatimResult) {
+  const addr = nominatimResult?.address;
+  if (!addr || typeof addr !== 'object') return nominatimResult?.display_name ?? null;
+  return (
+    addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.hamlet ?? addr.suburb ?? null
+  );
 }
 
 /** Infer role from fieldId (auto-map) */
@@ -179,12 +197,12 @@ export class GeoWeatherEnricher {
 
     // A) Already coordinates object?
     if (typeof query === 'object' && query.lat && query.lon) {
-      return { ...query, confidence: 1 };
+      return { ...query, confidence: 1, precision: 'exact' };
     }
 
     // B) Parse coordinate string (decimal or DMS)
     const parsed = parseCoordinate(query);
-    if (parsed) return { ...parsed, confidence: 1 };
+    if (parsed) return { ...parsed, confidence: 1, precision: 'exact' };
 
     // C) Netlify Nominatim proxy (street-level, avoids CORS)
     if (this.nominatimProxyUrl) {
@@ -192,7 +210,7 @@ export class GeoWeatherEnricher {
       if (result) return result;
     }
 
-    // D) Fallback: Open-Meteo geocoding (city-level, BG/DE biased)
+    // D) Fallback: Open-Meteo geocoding (city-level only, keeps the full query as address)
     return this._resolveViaOpenMeteo(query);
   }
 
@@ -209,12 +227,17 @@ export class GeoWeatherEnricher {
       if (!response.ok) return null;
       const data = await response.json();
       if (data.error || !isFinite(data.lat) || !isFinite(data.lon)) return null;
+
+      // Build a proper "Street, PLZ City, Country" address from the raw parts.
+      // Older proxies may not send addressParts - fall back to their `address` string.
+      const formatted = formatAddress({ display_name: data.address, address: data.addressParts });
       return {
         lat: data.lat,
         lon: data.lon,
         displayName: data.displayName ?? null,
-        address: data.address ?? null,
-        confidence: 1.0
+        address: formatted || data.address || null,
+        confidence: 1.0,
+        precision: 'street'
       };
     } catch {
       return null;
@@ -222,6 +245,10 @@ export class GeoWeatherEnricher {
   }
 
   async _resolveViaOpenMeteo(query) {
+    // Keep the full request: Open-Meteo only resolves to a place/city,
+    // but the street part must not be lost from the displayed address.
+    const originalQuery = query;
+
     // Try multiple query variations for better matching
     // Open-Meteo geocoding works best with English names and language
     let queries = [query];
@@ -463,8 +490,9 @@ export class GeoWeatherEnricher {
             lat: parseFloat(r.latitude),
             lon: parseFloat(r.longitude),
             displayName: r.name || null,
-            address: r.name || q,
-            confidence: 0.8 // lower confidence for city-level
+            address: originalQuery,
+            confidence: 0.8, // lower confidence for city-level
+            precision: 'city'
           };
         } catch (error) {
           console.error('[OpenMeteo Geocoding] Error for query:', q, error);
@@ -496,8 +524,9 @@ export class GeoWeatherEnricher {
               lat: parseFloat(r.latitude),
               lon: parseFloat(r.longitude),
               displayName: r.name || null,
-              address: r.name || fallbackQuery,
-              confidence: 0.7
+              address: originalQuery,
+              confidence: 0.7,
+              precision: 'city'
             };
           }
         } catch (fallbackError) {

@@ -253,10 +253,16 @@ export async function getCategories() {
 
 /**
  * Delete a category and all its steps.
+ * Also removes the category's AI settings (API key / prompt), so no orphan
+ * records are left behind in the `category-prompts` store.
  * @param {string} id
  * @returns {Promise<void>}
  */
 export async function deleteCategory(id) {
+  // Remove AI settings first, then the category itself.
+  await withStore(STORES.CATEGORY_PROMPTS, 'readwrite', (store) => {
+    store.delete(id);
+  });
   return withStore(STORES.CATEGORIES, 'readwrite', (store) => {
     store.delete(id);
   });
@@ -430,6 +436,35 @@ export async function deleteCategoryAISettings(categoryId) {
   if (!categoryId) return;
   return withStore(STORES.CATEGORY_PROMPTS, 'readwrite', (store) => {
     store.delete(categoryId);
+  });
+}
+
+/**
+ * Remove AI settings records whose category no longer exists.
+ * Categories can disappear via archive import (new IDs are generated) or by
+ * editing IndexedDB directly, which would otherwise leave orphaned keys.
+ * @returns {Promise<number>} How many orphan records were removed.
+ */
+export async function cleanupOrphanCategoryAISettings() {
+  const categories = await getCategories();
+  const validIds = new Set(categories.map((c) => c.id));
+
+  return withStore(STORES.CATEGORY_PROMPTS, 'readwrite', (store) => {
+    return new Promise((resolve) => {
+      const request = store.getAllKeys();
+      request.onsuccess = () => {
+        const keys = request.result || [];
+        let removed = 0;
+        for (const key of keys) {
+          if (!validIds.has(key)) {
+            store.delete(key);
+            removed++;
+          }
+        }
+        resolve(removed);
+      };
+      request.onerror = () => resolve(0);
+    });
   });
 }
 

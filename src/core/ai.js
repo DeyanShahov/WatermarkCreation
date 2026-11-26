@@ -24,9 +24,13 @@ import {
 
 /* ------------------------------ Built-in Defaults ------------------------------ */
 
+/** Single source of truth for the AI model used everywhere (browser + proxy). */
+export const DEFAULT_AI_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+export const DEFAULT_AI_MODEL = 'qwen/qwen3.8-27b';
+
 const BUILTIN_DEFAULTS = {
-  endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-  model: 'qwen/qwen3.8-27b',
+  endpoint: DEFAULT_AI_ENDPOINT,
+  model: DEFAULT_AI_MODEL,
   apiKey: '', // Optional: user can provide their own key for direct browser→Groq calls
   prompt: `You are an address validator and corrector for Bulgarian and German addresses.
 Your task: Correct ANY spelling mistakes in the address, especially street names.
@@ -76,9 +80,12 @@ export async function getEffectiveSettings(categoryId = null) {
   return { 
     endpoint, 
     model, 
-    apiKey, 
+    apiKey,
     prompt,
-    hasCategorySettings: categorySettings.hasSettings || false
+    hasCategorySettings: categorySettings.hasSettings || false,
+    // 'browser' = user-provided key found for this category (direct Groq call),
+    // 'none'    = no key in the browser -> caller falls back to the Netlify proxy.
+    keySource: (categorySettings.apiKey && String(categorySettings.apiKey).trim() !== '') ? 'browser' : 'none'
   };
 }
 
@@ -121,7 +128,8 @@ async function callGroqDirect({ endpoint, model, apiKey, systemPrompt, userInput
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error?.message || `Groq API error: ${response.status}`);
+    const providerMessage = data.error?.message || response.statusText || 'unknown error';
+    throw new Error(`Groq: ${providerMessage} (HTTP ${response.status})`);
   }
 
   return {
@@ -164,7 +172,6 @@ export async function callNetlifyAI({ action, categoryId, input, prompt }) {
   if (!response.ok) {
     throw new Error(data.error || `AI Function error: ${response.status}`);
   }
-  
   return data;
 }
 
@@ -267,51 +274,36 @@ Be specific about what you see and whether it matches the expected category.`;
 
 /* ------------------------------ High-level AI Actions ------------------------------ */
 
-/** Validate address using AI (for enrichment modal). */
+/** Validate address using AI (for enrichment modal). Throws the provider error. */
 export async function validateAddressWithAI(address, categoryId = null) {
-  try {
-    const result = await callAI({
-      action: 'validate-address',
-      categoryId,
-      input: address
-    });
-    return result.result;
-  } catch (error) {
-    console.error('AI address validation failed:', error);
-    return null;
-  }
+  const result = await callAI({
+    action: 'validate-address',
+    categoryId,
+    input: address
+  });
+  return result.result;
 }
 
-/** Analyze image using AI. */
+/** Analyze image using AI. Throws the provider error. */
 export async function analyzeImageWithAI(base64Image, categoryId = null) {
-  try {
-    const result = await callAI({
-      action: 'analyze-image',
-      categoryId,
-      input: base64Image,
-      isImage: true
-    });
-    return result.result;
-  } catch (error) {
-    console.error('AI image analysis failed:', error);
-    return null;
-  }
+  const result = await callAI({
+    action: 'analyze-image',
+    categoryId,
+    input: base64Image,
+    isImage: true
+  });
+  return result.result;
 }
 
-/** Extract metadata from image using AI. */
+/** Extract metadata from image using AI. Throws the provider error. */
 export async function extractMetadataWithAI(base64Image, categoryId = null) {
-  try {
-    const result = await callAI({
-      action: 'extract-metadata',
-      categoryId,
-      input: base64Image,
-      isImage: true
-    });
-    return result.result;
-  } catch (error) {
-    console.error('AI metadata extraction failed:', error);
-    return null;
-  }
+  const result = await callAI({
+    action: 'extract-metadata',
+    categoryId,
+    input: base64Image,
+    isImage: true
+  });
+  return result.result;
 }
 
 /** Test AI connection for a category. */
@@ -327,7 +319,10 @@ export async function testAIConnection(categoryId = null) {
     settingsUsed: {
       model: settings.model,
       endpoint: settings.endpoint,
-      hasApiKey: !!settings.apiKey
+      hasApiKey: !!(settings.apiKey && String(settings.apiKey).trim()),
+      keySource: settings.keySource,
+      // 'direct' = browser key -> straight to Groq; 'proxy' = Netlify function
+      route: settings.keySource === 'browser' ? 'direct' : 'proxy'
     }
   };
 }

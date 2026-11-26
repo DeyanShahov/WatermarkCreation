@@ -59,8 +59,9 @@ export const handler = async (event) => {
 
   // Get API configuration from environment
   const apiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
-  const defaultEndpoint = process.env.AI_ENDPOINT || 'https://api.groq.com/openai/v1/chat/completions';
-  const defaultModel = process.env.AI_MODEL || 'llama-3.1-70b-versatile';
+  const DEFAULT_ENDPOINT = process.env.AI_ENDPOINT || 'https://api.groq.com/openai/v1/chat/completions';
+  // Same default model as the browser side (src/core/ai.js).
+  const DEFAULT_MODEL = process.env.AI_MODEL || 'qwen/qwen3.8-27b';
 
   if (!apiKey) {
     return {
@@ -71,8 +72,8 @@ export const handler = async (event) => {
   }
 
   // Determine model and endpoint
-  const useEndpoint = process.env.AI_ENDPOINT || defaultEndpoint;
-  const useModel = model || process.env.AI_MODEL || defaultModel;
+  const useEndpoint = process.env.AI_ENDPOINT || DEFAULT_ENDPOINT;
+  const useModel = model || process.env.AI_MODEL || DEFAULT_MODEL;
 
   try {
     // Build system prompt based on action and category
@@ -106,8 +107,8 @@ export const handler = async (event) => {
       max_tokens: 500
     };
 
-    // Call AI API
-    const response = await fetch(defaultEndpoint, {
+    // Call AI API (use the resolved endpoint, not the raw default)
+    const response = await fetch(useEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

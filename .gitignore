@@ -9,7 +9,6 @@ build/
 *.local
 
 # Netlify
-netlify/functions/
 !.netlify/
 
 # Vite
@@ -49,3 +48,5 @@ coverage/
 
 # Vite
 *.tsbuildinfo
+# Local Netlify folder
+.netlify
